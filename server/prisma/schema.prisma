@@ -1,0 +1,170 @@
+// Agenda Institucional e Pessoal — esquema de dados
+// SQLite para desenvolvimento local; trocar provider para "postgresql" na publicação.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ───────────────────────── Usuários e segurança ─────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  // ADMIN | GESTOR | MEMBRO | VISITANTE
+  role         String   @default("MEMBRO")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  memberships CalendarMember[]
+  events      Event[]          @relation("EventCreator")
+  tasks       Task[]
+  sessions    SessionRecord[]  @relation("SessionCreator")
+}
+
+// ───────────────────────── Agendas (múltiplas, compartilháveis) ─────────────────────────
+
+model Calendar {
+  id        String   @id @default(cuid())
+  name      String
+  // PESSOAL | FAMILIAR | INSTITUCIONAL
+  type      String   @default("PESSOAL")
+  color     String   @default("#1a73e8")
+  createdAt DateTime @default(now())
+
+  members   CalendarMember[]
+  events    Event[]
+  tasks     Task[]
+  birthdays Birthday[]
+  sessions  SessionRecord[]
+}
+
+model CalendarMember {
+  id         String @id @default(cuid())
+  calendarId String
+  userId     String
+  // OWNER | EDITOR | VIEWER
+  role       String @default("VIEWER")
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([calendarId, userId])
+}
+
+// ───────────────────────── Eventos, tarefas e aniversários ─────────────────────────
+
+model Event {
+  id          String   @id @default(cuid())
+  calendarId  String
+  creatorId   String
+  title       String
+  description String?
+  location    String?
+  start       DateTime
+  end         DateTime
+  allDay      Boolean  @default(false)
+  // REUNIAO | SESSAO | TRABALHO | FAMILIA | VIAGEM | OUTRO ...
+  category    String   @default("OUTRO")
+  color       String?
+  // Regra de recorrência no padrão iCalendar (RRULE), ex: FREQ=WEEKLY;BYDAY=SA
+  rrule       String?
+  // Minutos antes do evento para notificar, separados por vírgula. Ex: "10,60"
+  reminders   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  creator  User     @relation("EventCreator", fields: [creatorId], references: [id])
+
+  @@index([calendarId, start])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  calendarId  String
+  userId      String
+  title       String
+  description String?
+  dueDate     DateTime?
+  // BAIXA | MEDIA | ALTA
+  priority    String    @default("MEDIA")
+  done        Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+}
+
+model Birthday {
+  id         String   @id @default(cuid())
+  calendarId String
+  name       String
+  birthDate  DateTime
+  phone      String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  // Classificação etária (CRIANCA 0-11, JOVEM 12-17, ADULTO 18+) é calculada na API.
+}
+
+// ───────────────────────── Módulo: Controle de Sessões ─────────────────────────
+// Estrutura derivada dos registros reais (histórico WhatsApp da Assistência).
+
+model SessionRecord {
+  id         String   @id @default(cuid())
+  calendarId String
+  creatorId  String
+  date       DateTime
+  // ESCALA | ESCALA_ANUAL | INSTRUTIVA | EXTRA | ADVENTICIOS | DIRECAO | QUADRO_DE_MESTRES | COMEMORATIVA | OUTRA
+  type       String   @default("ESCALA")
+  title      String? // ex: "Sessão de Reis", "Aniversário NRL"
+
+  dirigente        String?
+  assistente       String?
+  auxAssistente    String? // auxiliares do assistente (texto livre, vários nomes)
+  som              String?
+  leituraDocumentos String?
+  explanacao       String?
+
+  // Vegetal
+  vegetalDescricao String? // origem/preparo, uniões, observações de lote
+  coadoLitros      Float?  // total coado para a sessão
+  comungadoLitros  Float?  // efetivamente comungado
+  retornoLitros    Float?  // retorno ao estoque
+
+  // Copos
+  coposSimples  Int?
+  coposDuplos   Int?
+  coposCriancas Int?
+  repeticoes    Int?
+
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  creator  User     @relation("SessionCreator", fields: [creatorId], references: [id])
+
+  @@index([calendarId, date])
+}
+
+// Estoque de vegetal (contagens periódicas e lotes)
+model VegetalLote {
+  id        String   @id @default(cuid())
+  nome      String // ex: "Tucunacá Baliza", "Caupuri Itinga - Preparo NRI 25/07/25"
+  origem    String?
+  litros    Float
+  // GELADEIRA | FORA | OUTRO
+  local     String   @default("FORA")
+  notas     String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}

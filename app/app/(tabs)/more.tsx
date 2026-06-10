@@ -1,0 +1,80 @@
+import { useCallback, useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Linking } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { api, setToken, API_URL } from '../../src/api';
+import { colors } from '../../src/theme';
+
+export default function More() {
+  const [calendars, setCalendars] = useState<any[]>([]);
+  const [vegetal, setVegetal] = useState<any>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setCalendars(await api('/calendars'));
+      setVegetal(await api('/vegetal'));
+    } catch (e) { console.warn(e); }
+  }, []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  async function logout() {
+    await setToken(null);
+    router.replace('/login');
+  }
+
+  return (
+    <View style={s.container}>
+      <Text style={s.section}>Minhas agendas</Text>
+      <FlatList
+        data={calendars}
+        keyExtractor={(c) => c.id}
+        style={{ flexGrow: 0 }}
+        renderItem={({ item }) => (
+          <View style={s.card}>
+            <View style={[s.colorDot, { backgroundColor: item.color }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.title}>{item.name}</Text>
+              <Text style={s.meta}>{item.type} · {item.members?.length || 0} membro(s)</Text>
+            </View>
+            <TouchableOpacity onPress={() => Linking.openURL(`${API_URL}/api/export/ics/${item.id}`)}>
+              <Text style={s.link}>Exportar ICS</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
+      {vegetal && (
+        <>
+          <Text style={s.section}>Estoque de Vegetal — total {vegetal.total?.toFixed(1)} L</Text>
+          <FlatList
+            data={vegetal.lotes}
+            keyExtractor={(l: any) => l.id}
+            style={{ flexGrow: 0 }}
+            renderItem={({ item }) => (
+              <View style={s.card}>
+                <Text style={{ fontSize: 18 }}>🌿</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.title}>{item.nome}</Text>
+                  <Text style={s.meta}>{item.litros} L · {item.local === 'GELADEIRA' ? 'Geladeira' : 'Fora da geladeira'}{item.origem ? ` · ${item.origem}` : ''}</Text>
+                </View>
+              </View>
+            )}
+          />
+        </>
+      )}
+      <TouchableOpacity style={s.logout} onPress={logout}>
+        <Text style={s.logoutText}>Sair da conta</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg, padding: 12 },
+  section: { color: colors.muted, fontSize: 13, textTransform: 'uppercase', marginVertical: 10 },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 10, padding: 12, marginBottom: 8, gap: 10 },
+  colorDot: { width: 14, height: 14, borderRadius: 7 },
+  title: { color: colors.text, fontWeight: '600' },
+  meta: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  link: { color: colors.primary, fontSize: 13 },
+  logout: { marginTop: 'auto', borderColor: colors.red, borderWidth: 1, borderRadius: 10, padding: 14, alignItems: 'center' },
+  logoutText: { color: colors.red, fontWeight: '600' },
+});

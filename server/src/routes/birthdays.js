@@ -1,0 +1,71 @@
+import { Router } from 'express';
+import { prisma } from '../lib/prisma.js';
+import { requireCalendar } from '../lib/auth.js';
+
+export const birthdaysRouter = Router();
+
+// Classificação etária automática: 0-11 CRIANCA, 12-17 JOVEM, 18+ ADULTO
+export function classify(birthDate, ref = new Date()) {
+  const b = new Date(birthDate);
+  let age = ref.getFullYear() - b.getFullYear();
+  const m = ref.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && ref.getDate() < b.getDate())) age--;
+  if (age <= 11) return { age, group: 'CRIANCA' };
+  if (age <= 17) return { age, group: 'JOVEM' };
+  return { age, group: 'ADULTO' };
+}
+
+function withClassification(b) {
+  const { age, group } = classify(b.birthDate);
+  // próximo aniversário
+  const now = new Date();
+  const next = new Date(now.getFullYear(), new Date(b.birthDate).getMonth(), new Date(b.birthDate).getDate());
+  if (next < new Date(now.getFullYear(), now.getMonth(), now.getDate())) next.setFullYear(next.getFullYear() + 1);
+  return { ...b, age, group, nextBirthday: next };
+}
+
+birthdaysRouter.get('/', async (req, res) => {
+  const myCals = await prisma.calendarMember.findMany({ where: { userId: req.user.id }, select: { calendarId: true } });
+  const where = { calendarId: { in: myCals.map((m) => m.calendarId) } };
+  if (req.query.q) where.name = { contains: req.query.q };
+  const list = await prisma.birthday.findMany({ where, orderBy: { name: 'asc' } });
+  let result = list.map(withClassification);
+  if (req.query.group) result = result.filter((b) => b.group === req.query.group);
+  result.sort((a, b) => a.nextBirthday - b.nextBirthday);
+  res.json(result);
+});
+
+birthdaysRouter.post('/', async (req, res) => {
+  const b = req.body || {};
+  if (!b.calendarId || !b.name || !b.birthDate) return res.status(400).json({ error: 'Campos obrigatórios: calendarId, name, birthDate' });
+  if (!(await requireCalendar(req, res, b.calendarId, true))) return;
+  const created = await prisma.birthday.create({
+    data: { calendarId: b.calendarId, name: b.name, birthDate: new Date(b.birthDate), phone: b.phone, notes: b.notes },
+  });
+  res.json(withClassification(created));
+});
+
+birthdaysRouter.put('/:id', async (req, res) => {
+  const existing = await prisma.birthday.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'Aniversário não encontrado' });
+  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  const b = req.body || {};
+  const updated = await prisma.birthday.update({
+    where: { id: req.params.id },
+    data: {
+      name: b.name ?? existing.name,
+      birthDate: b.birthDate ? new Date(b.birthDate) : existing.birthDate,
+      phone: b.phone,
+      notes: b.notes,
+    },
+  });
+  res.json(withClassification(updated));
+});
+
+birthdaysRouter.delete('/:id', async (req, res) => {
+  const existing = await prisma.birthday.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'Aniversário não encontrado' });
+  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  await prisma.birthday.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
