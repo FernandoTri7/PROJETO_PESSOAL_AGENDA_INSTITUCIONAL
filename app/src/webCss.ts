@@ -1,21 +1,22 @@
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@500;600;700&display=swap');
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;color:#1a1a1a}
+html,body,#root{height:100%;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
 
+/* Tokens do design system (teal + laranja). Nomes --navy/--gold mantidos por compatibilidade das classes. */
 :root{
-  --navy:#0F2A4A;--navy-d:#091e36;--navy-l:#1a3a5c;
-  --gold:#C9952A;--gold-l:#e6b44c;
-  --bg:#f5f5f0;--white:#ffffff;--border:#ddd8ce;
-  --text:#1a1a1a;--muted:#6b7280;
+  --navy:#0F5C5E;--navy-d:#073C3E;--navy-l:#14706F;
+  --gold:#F5A018;--gold-l:#F8B84A;
+  --bg:#F5F7F8;--white:#FFFFFF;--border:#DCE2E5;
+  --text:#1F2933;--muted:#52606D;--ring:#F5A018;
   --sidebar:240px;--topbar:60px;
 }
 
 /* Shell */
 .web-shell{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .topbar{height:var(--topbar);background:var(--navy);color:white;display:flex;align-items:center;padding:0 20px;justify-content:space-between;flex-shrink:0;gap:12px}
-.topbar-brand{font-family:'Libre Baskerville',serif;font-size:18px;letter-spacing:.4px;white-space:nowrap}
+.topbar-brand{font-family:'DM Sans',sans-serif;font-size:18px;letter-spacing:.4px;white-space:nowrap}
 .topbar-right{display:flex;align-items:center;gap:8px}
 .web-body{display:flex;flex:1;overflow:hidden}
 .sidebar{width:var(--sidebar);background:var(--navy-d);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
@@ -32,7 +33,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 /* Page */
 .page{padding:24px;max-width:1280px}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
-.page-title{font-family:'Libre Baskerville',serif;font-size:22px;color:var(--navy)}
+.page-title{font-family:'DM Sans',sans-serif;font-size:22px;color:var(--navy)}
 
 /* Cards */
 .card{background:var(--white);border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);padding:20px}
@@ -65,7 +66,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 
 /* Calendar */
 .cal-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;gap:12px}
-.cal-nav-title{font-family:'Libre Baskerville',serif;font-size:20px;color:var(--navy);min-width:180px}
+.cal-nav-title{font-family:'DM Sans',sans-serif;font-size:20px;color:var(--navy);min-width:180px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--border);gap:1px}
 .cal-wday{background:var(--navy);color:rgba(255,255,255,.8);text-align:center;padding:8px 4px;font-size:11px;font-weight:600;letter-spacing:.5px}
 .cal-cell{background:var(--white);min-height:86px;padding:6px;cursor:pointer;transition:background .1s;vertical-align:top}
@@ -91,7 +92,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 /* Day panel */
 .day-panel{background:var(--white);border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);overflow:hidden;height:100%}
 .day-panel-header{padding:14px 16px;border-bottom:1px solid var(--border);background:var(--navy);color:white}
-.day-panel-title{font-family:'Libre Baskerville',serif;font-size:16px}
+.day-panel-title{font-family:'DM Sans',sans-serif;font-size:16px}
 .day-panel-sub{font-size:12px;opacity:.7;margin-top:2px}
 .day-panel-body{padding:12px}
 
@@ -103,7 +104,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 .modal{background:var(--white);border-radius:14px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 .modal-lg{max-width:700px}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 0}
-.modal-title{font-family:'Libre Baskerville',serif;font-size:18px;color:var(--navy)}
+.modal-title{font-family:'DM Sans',sans-serif;font-size:18px;color:var(--navy)}
 .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%}
 .modal-close:hover{background:var(--bg)}
 .modal-body{padding:16px 24px 20px}
@@ -113,7 +114,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 .form-group{margin-bottom:13px}
 .form-label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
 .form-input,.form-select,.form-textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;font-size:14px;color:var(--text);font-family:inherit;background:var(--white);transition:border-color .15s}
-.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(15,42,74,.08)}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,160,24,.22)}
 .form-textarea{resize:vertical;min-height:70px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-error{color:#ef4444;font-size:13px;margin-bottom:12px;padding:9px 12px;background:#fef2f2;border-radius:7px;border-left:3px solid #ef4444}
@@ -124,7 +125,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 
 /* Annual view */
 .year-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-.mini-cal-title{font-size:12px;font-weight:700;color:var(--navy);text-align:center;margin-bottom:6px;font-family:'Libre Baskerville',serif}
+.mini-cal-title{font-size:12px;font-weight:700;color:var(--navy);text-align:center;margin-bottom:6px;font-family:'DM Sans',sans-serif}
 .mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden}
 .mini-wday{background:#e8e4da;text-align:center;font-size:9px;color:var(--muted);line-height:17px;font-weight:600}
 .mini-cell{background:var(--white);text-align:center;font-size:10px;padding:2px;line-height:16px;cursor:pointer}
@@ -175,7 +176,7 @@ html,body,#root{height:100%;font-family:'DM Sans',sans-serif;background:#f5f5f0;
 .text-navy{color:var(--navy)}
 .text-gold{color:var(--gold)}
 .text-muted{color:var(--muted)}
-.font-serif{font-family:'Libre Baskerville',serif}
+.font-serif{font-family:'DM Sans',sans-serif}
 .divider{height:1px;background:var(--border);margin:16px 0}
 .pill{display:inline-flex;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
 .tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:4px;font-size:11px;font-weight:600}
@@ -215,36 +216,8 @@ export function injectWebCss() {
   }
 }
 
-export const NAV_CATS = [
-  { key: 'sessao_escala',     label: 'Sessão de Escala',    color: '#0F5C2E' },
-  { key: 'sessao_instrutiva', label: 'Sessão Instrutiva',   color: '#0a6640' },
-  { key: 'sessao_extra',      label: 'Sessão Extra',        color: '#1a7a4a' },
-  { key: 'sessao_qm',         label: 'QM/CDC',              color: '#2d5016' },
-  { key: 'sessao_jovens',     label: 'Sessão de Jovens',    color: '#3a7d44' },
-  { key: 'sessao_anual',      label: 'Sessão Anual',        color: '#0d4d2e' },
-  { key: 'sessao_especial',   label: 'Sessão Especial',     color: '#1b5e20' },
-  { key: 'reuniao',           label: 'Reunião',             color: '#0F2A4A' },
-  { key: 'evento_especial',   label: 'Evento Especial',     color: '#C9952A' },
-  { key: 'bazar',             label: 'Bazar',               color: '#7c3aed' },
-  { key: 'mutirao',           label: 'Mutirão',             color: '#b45309' },
-  { key: 'feriado',           label: 'Feriado',             color: '#dc2626' },
-  { key: 'aniversario',       label: 'Aniversário',         color: '#d97706' },
-  { key: 'encontro',          label: 'Encontro',            color: '#0369a1' },
-  { key: 'livre',             label: 'Livre',               color: '#6b7280' },
-  { key: 'outro',             label: 'Outro',               color: '#9ca3af' },
-];
-
-export function getCatColor(category: string) {
-  return NAV_CATS.find(c => c.key === category)?.color
-    ?? { REUNIAO:'#0F2A4A', SESSAO:'#0F5C2E', TRABALHO:'#1a73e8', FAMILIA:'#d97706', VIAGEM:'#7c3aed', ANIVERSARIO:'#d97706', OUTRO:'#9ca3af' }[category]
-    ?? '#9ca3af';
-}
-
-export function getCatLabel(category: string) {
-  return NAV_CATS.find(c => c.key === category)?.label
-    ?? { REUNIAO:'Reunião', SESSAO:'Sessão', TRABALHO:'Trabalho', FAMILIA:'Família', VIAGEM:'Viagem', ANIVERSARIO:'Aniversário', OUTRO:'Outro' }[category]
-    ?? category;
-}
+// Categorias e helpers vêm da fonte única em theme.ts (reexportados aqui por compatibilidade dos imports do web).
+export { NAV_CATS, getCatColor, getCatLabel } from './theme';
 
 export const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export const WDAYS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
