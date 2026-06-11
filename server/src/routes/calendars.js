@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireCalendar } from '../lib/auth.js';
+import { validateBody } from '../lib/validate.js';
+import { calendarCreateSchema, calendarUpdateSchema, memberSchema } from '../lib/schemas.js';
 
 export const calendarsRouter = Router();
 
@@ -14,18 +16,17 @@ calendarsRouter.get('/', async (req, res) => {
   res.json(calendars);
 });
 
-calendarsRouter.post('/', async (req, res) => {
-  const { name, type = 'PESSOAL', color = '#1a73e8' } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'Informe o nome da agenda' });
+calendarsRouter.post('/', validateBody(calendarCreateSchema), async (req, res) => {
+  const { name, type = 'PESSOAL', color = '#1a73e8' } = req.body;
   const cal = await prisma.calendar.create({
     data: { name, type, color, members: { create: { userId: req.user.id, role: 'OWNER' } } },
   });
   res.json(cal);
 });
 
-calendarsRouter.put('/:id', async (req, res) => {
+calendarsRouter.put('/:id', validateBody(calendarUpdateSchema), async (req, res) => {
   if (!(await requireCalendar(req, res, req.params.id, true))) return;
-  const { name, type, color } = req.body || {};
+  const { name, type, color } = req.body;
   const cal = await prisma.calendar.update({ where: { id: req.params.id }, data: { name, type, color } });
   res.json(cal);
 });
@@ -37,9 +38,9 @@ calendarsRouter.delete('/:id', async (req, res) => {
 });
 
 // Compartilhamento: adiciona membro por e-mail
-calendarsRouter.post('/:id/members', async (req, res) => {
+calendarsRouter.post('/:id/members', validateBody(memberSchema), async (req, res) => {
   if (!(await requireCalendar(req, res, req.params.id, true))) return;
-  const { email, role = 'VIEWER' } = req.body || {};
+  const { email, role = 'VIEWER' } = req.body;
   const user = await prisma.user.findUnique({ where: { email: email || '' } });
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
   const member = await prisma.calendarMember.upsert({

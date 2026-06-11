@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireCalendar } from '../lib/auth.js';
+import { validateBody } from '../lib/validate.js';
+import { sessionCreateSchema, sessionUpdateSchema } from '../lib/schemas.js';
+import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
 
 export const sessionsRouter = Router();
 
@@ -36,7 +39,12 @@ sessionsRouter.get('/', async (req, res) => {
       { vegetalDescricao: { contains: req.query.q } },
     ];
   }
-  const sessions = await prisma.sessionRecord.findMany({ where, orderBy: { date: 'desc' } });
+  const pg = parsePagination(req.query);
+  const [total, sessions] = await Promise.all([
+    prisma.sessionRecord.count({ where }),
+    prisma.sessionRecord.findMany({ where, orderBy: { date: 'desc' }, ...(pg.paginated ? { skip: pg.skip, take: pg.take } : {}) }),
+  ]);
+  setPaginationHeaders(res, { total, ...pg });
   res.json(sessions);
 });
 
@@ -49,22 +57,35 @@ sessionsRouter.get('/stats', async (req, res) => {
     if (req.query.from) where.date.gte = new Date(req.query.from);
     if (req.query.to) where.date.lte = new Date(req.query.to);
   }
-  const list = await prisma.sessionRecord.findMany({ where });
-  const sum = (f) => list.reduce((acc, s) => acc + (s[f] || 0), 0);
+  // Agregação no banco: soma e contagem sem carregar os registros em memória.
+  const [agg, porTipoRaw] = await Promise.all([
+    prisma.sessionRecord.aggregate({
+      where,
+      _count: { _all: true },
+      _sum: {
+        coadoLitros: true,
+        retornoLitros: true,
+        coposSimples: true,
+        coposDuplos: true,
+        coposCriancas: true,
+      },
+    }),
+    prisma.sessionRecord.groupBy({ by: ['type'], where, _count: { _all: true } }),
+  ]);
+  const porTipo = Object.fromEntries(porTipoRaw.map((r) => [r.type, r._count._all]));
   res.json({
-    totalSessoes: list.length,
-    coadoLitros: sum('coadoLitros'),
-    retornoLitros: sum('retornoLitros'),
-    coposSimples: sum('coposSimples'),
-    coposDuplos: sum('coposDuplos'),
-    coposCriancas: sum('coposCriancas'),
-    porTipo: list.reduce((acc, s) => ((acc[s.type] = (acc[s.type] || 0) + 1), acc), {}),
+    totalSessoes: agg._count._all,
+    coadoLitros: agg._sum.coadoLitros || 0,
+    retornoLitros: agg._sum.retornoLitros || 0,
+    coposSimples: agg._sum.coposSimples || 0,
+    coposDuplos: agg._sum.coposDuplos || 0,
+    coposCriancas: agg._sum.coposCriancas || 0,
+    porTipo,
   });
 });
 
-sessionsRouter.post('/', async (req, res) => {
-  const b = req.body || {};
-  if (!b.calendarId || !b.date) return res.status(400).json({ error: 'Campos obrigatórios: calendarId, date' });
+sessionsRouter.post('/', validateBody(sessionCreateSchema), async (req, res) => {
+  const b = req.body;
   if (!(await requireCalendar(req, res, b.calendarId, true))) return;
   const session = await prisma.sessionRecord.create({
     data: { calendarId: b.calendarId, creatorId: req.user.id, ...buildData(b) },
@@ -72,7 +93,7 @@ sessionsRouter.post('/', async (req, res) => {
   res.json(session);
 });
 
-sessionsRouter.put('/:id', async (req, res) => {
+sessionsRouter.put('/:id', validateBody(sessionUpdateSchema), async (req, res) => {
   const existing = await prisma.sessionRecord.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Sessão não encontrada' });
   if (!(await requireCalendar(req, res, existing.calendarId, true))) return;

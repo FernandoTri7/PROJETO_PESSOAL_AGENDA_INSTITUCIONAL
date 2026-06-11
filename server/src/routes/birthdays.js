@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireCalendar } from '../lib/auth.js';
+import { validateBody } from '../lib/validate.js';
+import { birthdayCreateSchema, birthdayUpdateSchema } from '../lib/schemas.js';
+import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
 
 export const birthdaysRouter = Router();
 
@@ -32,12 +35,14 @@ birthdaysRouter.get('/', async (req, res) => {
   let result = list.map(withClassification);
   if (req.query.group) result = result.filter((b) => b.group === req.query.group);
   result.sort((a, b) => a.nextBirthday - b.nextBirthday);
-  res.json(result);
+  // Paginação sobre a lista já classificada e ordenada por próximo aniversário.
+  const pg = parsePagination(req.query);
+  setPaginationHeaders(res, { total: result.length, ...pg });
+  res.json(pg.paginated ? result.slice(pg.skip, pg.skip + pg.take) : result);
 });
 
-birthdaysRouter.post('/', async (req, res) => {
-  const b = req.body || {};
-  if (!b.calendarId || !b.name || !b.birthDate) return res.status(400).json({ error: 'Campos obrigatórios: calendarId, name, birthDate' });
+birthdaysRouter.post('/', validateBody(birthdayCreateSchema), async (req, res) => {
+  const b = req.body;
   if (!(await requireCalendar(req, res, b.calendarId, true))) return;
   const created = await prisma.birthday.create({
     data: { calendarId: b.calendarId, name: b.name, birthDate: new Date(b.birthDate), phone: b.phone, notes: b.notes },
@@ -45,11 +50,11 @@ birthdaysRouter.post('/', async (req, res) => {
   res.json(withClassification(created));
 });
 
-birthdaysRouter.put('/:id', async (req, res) => {
+birthdaysRouter.put('/:id', validateBody(birthdayUpdateSchema), async (req, res) => {
   const existing = await prisma.birthday.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Aniversário não encontrado' });
   if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
-  const b = req.body || {};
+  const b = req.body;
   const updated = await prisma.birthday.update({
     where: { id: req.params.id },
     data: {

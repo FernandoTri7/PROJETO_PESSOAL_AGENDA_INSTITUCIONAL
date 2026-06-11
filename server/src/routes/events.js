@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireCalendar } from '../lib/auth.js';
 import { expandRecurrences } from '../lib/recurrence.js';
+import { validateBody } from '../lib/validate.js';
+import { eventCreateSchema, eventUpdateSchema } from '../lib/schemas.js';
+import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
 
 export const eventsRouter = Router();
 
@@ -22,12 +25,15 @@ eventsRouter.get('/', async (req, res) => {
   const events = await prisma.event.findMany({ where, orderBy: { start: 'asc' } });
   const fromD = from ? new Date(from) : null;
   const toD = to ? new Date(to) : null;
-  res.json(expandRecurrences(events, fromD, toD));
+  // A paginação é aplicada sobre as ocorrências já expandidas (recorrências geram itens extras).
+  const expanded = expandRecurrences(events, fromD, toD);
+  const pg = parsePagination(req.query);
+  setPaginationHeaders(res, { total: expanded.length, ...pg });
+  res.json(pg.paginated ? expanded.slice(pg.skip, pg.skip + pg.take) : expanded);
 });
 
-eventsRouter.post('/', async (req, res) => {
-  const b = req.body || {};
-  if (!b.calendarId || !b.title || !b.start) return res.status(400).json({ error: 'Campos obrigatórios: calendarId, title, start' });
+eventsRouter.post('/', validateBody(eventCreateSchema), async (req, res) => {
+  const b = req.body;
   if (!(await requireCalendar(req, res, b.calendarId, true))) return;
   const event = await prisma.event.create({
     data: {
@@ -48,11 +54,11 @@ eventsRouter.post('/', async (req, res) => {
   res.json(event);
 });
 
-eventsRouter.put('/:id', async (req, res) => {
+eventsRouter.put('/:id', validateBody(eventUpdateSchema), async (req, res) => {
   const existing = await prisma.event.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Evento não encontrado' });
   if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
-  const b = req.body || {};
+  const b = req.body;
   const event = await prisma.event.update({
     where: { id: req.params.id },
     data: {

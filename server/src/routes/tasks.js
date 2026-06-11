@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireCalendar } from '../lib/auth.js';
+import { validateBody } from '../lib/validate.js';
+import { taskCreateSchema, taskUpdateSchema } from '../lib/schemas.js';
+import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
 
 export const tasksRouter = Router();
 
@@ -10,13 +13,18 @@ tasksRouter.get('/', async (req, res) => {
   if (req.query.q) where.title = { contains: req.query.q };
   if (req.query.done === 'true') where.done = true;
   if (req.query.done === 'false') where.done = false;
-  const tasks = await prisma.task.findMany({ where, orderBy: [{ done: 'asc' }, { dueDate: 'asc' }] });
+  const pg = parsePagination(req.query);
+  const orderBy = [{ done: 'asc' }, { dueDate: 'asc' }];
+  const [total, tasks] = await Promise.all([
+    prisma.task.count({ where }),
+    prisma.task.findMany({ where, orderBy, ...(pg.paginated ? { skip: pg.skip, take: pg.take } : {}) }),
+  ]);
+  setPaginationHeaders(res, { total, ...pg });
   res.json(tasks);
 });
 
-tasksRouter.post('/', async (req, res) => {
-  const b = req.body || {};
-  if (!b.calendarId || !b.title) return res.status(400).json({ error: 'Campos obrigatórios: calendarId, title' });
+tasksRouter.post('/', validateBody(taskCreateSchema), async (req, res) => {
+  const b = req.body;
   if (!(await requireCalendar(req, res, b.calendarId, true))) return;
   const task = await prisma.task.create({
     data: {
@@ -31,11 +39,11 @@ tasksRouter.post('/', async (req, res) => {
   res.json(task);
 });
 
-tasksRouter.put('/:id', async (req, res) => {
+tasksRouter.put('/:id', validateBody(taskUpdateSchema), async (req, res) => {
   const existing = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Tarefa não encontrada' });
   if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
-  const b = req.body || {};
+  const b = req.body;
   const task = await prisma.task.update({
     where: { id: req.params.id },
     data: {

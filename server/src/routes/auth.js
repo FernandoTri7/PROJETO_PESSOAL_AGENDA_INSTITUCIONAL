@@ -2,13 +2,17 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma.js';
 import { signToken } from '../lib/auth.js';
+import { rateLimit } from '../lib/rateLimit.js';
+import { validateBody } from '../lib/validate.js';
+import { registerSchema, loginSchema } from '../lib/schemas.js';
 
 export const authRouter = Router();
 
-authRouter.post('/register', async (req, res) => {
-  const { name, email, password } = req.body || {};
-  if (!name || !email || !password) return res.status(400).json({ error: 'Informe nome, e-mail e senha' });
-  if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter ao menos 6 caracteres' });
+// Protege login e cadastro contra brute force: 10 tentativas por IP a cada 15 min.
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+
+authRouter.post('/register', loginLimiter, validateBody(registerSchema), async (req, res) => {
+  const { name, email, password } = req.body;
   const exists = await prisma.user.findUnique({ where: { email } });
   if (exists) return res.status(409).json({ error: 'E-mail já cadastrado' });
 
@@ -33,8 +37,8 @@ authRouter.post('/register', async (req, res) => {
   res.json({ token: signToken(user), user: publicUser(user), defaultCalendarId: cal.id });
 });
 
-authRouter.post('/login', async (req, res) => {
-  const { email, password } = req.body || {};
+authRouter.post('/login', loginLimiter, validateBody(loginSchema), async (req, res) => {
+  const { email, password } = req.body;
   const user = await prisma.user.findUnique({ where: { email: email || '' } });
   if (!user || !(await bcrypt.compare(password || '', user.passwordHash))) {
     return res.status(401).json({ error: 'E-mail ou senha incorretos' });
