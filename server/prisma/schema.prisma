@@ -100,6 +100,8 @@ model Task {
 
   calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
   user     User     @relation(fields: [userId], references: [id])
+
+  @@index([calendarId, done])
 }
 
 model Birthday {
@@ -113,6 +115,8 @@ model Birthday {
 
   calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
   // Classificação etária (CRIANCA 0-11, JOVEM 12-17, ADULTO 18+) é calculada na API.
+
+  @@index([calendarId])
 }
 
 // ───────────────────────── Módulo: Controle de Sessões ─────────────────────────
