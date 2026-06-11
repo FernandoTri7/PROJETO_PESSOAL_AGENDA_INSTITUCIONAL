@@ -5,6 +5,8 @@ import { expandRecurrences } from '../lib/recurrence.js';
 import { validateBody } from '../lib/validate.js';
 import { eventCreateSchema, eventUpdateSchema } from '../lib/schemas.js';
 import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
+import { buildEventIcs } from '../lib/ics.js';
+import { sendMail, mailConfigured } from '../lib/mailer.js';
 
 export const eventsRouter = Router();
 
@@ -104,4 +106,41 @@ eventsRouter.delete('/:id', async (req, res) => {
   if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
   await prisma.event.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
+});
+
+// Envia convite por e-mail a cada convidado, com anexo .ics e links de RSVP.
+// Requer permissão de escrita na agenda. Sem SMTP configurado, simula o envio.
+eventsRouter.post('/:id/invite', async (req, res) => {
+  const ev = await prisma.event.findUnique({
+    where: { id: req.params.id },
+    include: { guests: true, calendar: true },
+  });
+  if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
+  if (!(await requireCalendar(req, res, ev.calendarId, true))) return;
+  if (!ev.guests.length) return res.status(400).json({ error: 'Nenhum convidado neste evento' });
+
+  const base = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 4000}`;
+  const ics = buildEventIcs(ev);
+  const quando = new Date(ev.start).toLocaleString('pt-BR');
+
+  const results = [];
+  for (const g of ev.guests) {
+    const accept = `${base}/api/rsvp?token=${g.token}&status=ACEITO`;
+    const decline = `${base}/api/rsvp?token=${g.token}&status=RECUSADO`;
+    const text = `Você foi convidado para "${ev.title}" em ${quando}.`
+      + `${ev.location ? `\nLocal: ${ev.location}` : ''}`
+      + `${ev.videoConfLink ? `\nVideoconferência: ${ev.videoConfLink}` : ''}`
+      + `\n\nConfirmar presença: ${accept}\nRecusar: ${decline}`;
+    const html = `<p>Você foi convidado para <strong>${ev.title}</strong> em ${quando}.</p>`
+      + `${ev.location ? `<p>Local: ${ev.location}</p>` : ''}`
+      + `${ev.videoConfLink ? `<p>Videoconferência: <a href="${ev.videoConfLink}">${ev.videoConfLink}</a></p>` : ''}`
+      + `<p><a href="${accept}">Confirmar presença</a> &nbsp;|&nbsp; <a href="${decline}">Recusar</a></p>`;
+    try {
+      const r = await sendMail({ to: g.email, subject: `Convite: ${ev.title}`, text, html, icsContent: ics });
+      results.push({ email: g.email, sent: r.sent });
+    } catch (e) {
+      results.push({ email: g.email, sent: false, error: e.message });
+    }
+  }
+  res.json({ configured: mailConfigured, results });
 });

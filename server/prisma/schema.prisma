@@ -116,8 +116,10 @@ model EventGuest {
   eventId   String
   email     String
   name      String?
-  // PENDENTE | ACEITO | RECUSADO (mudanças de status são da fase B — convite por e-mail)
+  // PENDENTE | ACEITO | RECUSADO (atualizado via link de RSVP no e-mail de convite)
   status    String   @default("PENDENTE")
+  // Token opaco usado no link de RSVP (resposta sem login).
+  token     String   @unique @default(cuid())
   createdAt DateTime @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)

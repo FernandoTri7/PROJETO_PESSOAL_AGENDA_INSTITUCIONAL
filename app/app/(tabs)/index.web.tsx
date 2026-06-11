@@ -79,6 +79,7 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
   const [guestEmail, setGuestEmail] = useState('');
   const [attName, setAttName] = useState('');
   const [attUrl, setAttUrl] = useState('');
+  const [inviteMsg, setInviteMsg] = useState('');
 
   function set(k: string) { return (e: any) => setForm((f: any) => ({ ...f, [k]: e.target ? e.target.value : e })); }
   function setB(k: string) { return (e: any) => setForm((f: any) => ({ ...f, [k]: e.target.checked })); }
@@ -97,6 +98,17 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
     setAttName(''); setAttUrl('');
   }
   function removeAttachment(i: number) { setForm((f: any) => ({ ...f, attachments: f.attachments.filter((_: any, j: number) => j !== i) })); }
+  async function sendInvites() {
+    if (isNew) return;
+    setInviteMsg('Enviando...');
+    try {
+      const r = await api(`/events/${ev.id}/invite`, { method: 'POST' });
+      const sent = r.results.filter((x: any) => x.sent).length;
+      setInviteMsg(r.configured
+        ? `Convites enviados: ${sent}/${r.results.length}.`
+        : `SMTP não configurado — ${r.results.length} convite(s) simulado(s). Defina SMTP_HOST/PORT/USER/PASS no servidor.`);
+    } catch (e: any) { setInviteMsg(e.message); }
+  }
 
   // Categorias visíveis = as do tipo da agenda selecionada + as de escopo TODAS.
   const calType = calendars.find((c: any) => c.id === form.calendarId)?.type;
@@ -263,7 +275,13 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
                     ))}
                   </div>
                 )}
-                <div className="form-hint">O envio de convites por e-mail será habilitado em breve.</div>
+                {!isNew && form.guests?.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={sendInvites}>Enviar convites por e-mail</button>
+                    {inviteMsg && <div className="form-hint" style={{ marginTop: 6 }}>{inviteMsg}</div>}
+                  </div>
+                )}
+                <div className="form-hint">Salve o evento antes de enviar os convites aos endereços adicionados.</div>
               </div>
 
               <div className="form-group">

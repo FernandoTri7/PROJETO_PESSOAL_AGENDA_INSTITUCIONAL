@@ -5,6 +5,7 @@ import { authRouter } from './routes/auth.js';
 import { calendarsRouter } from './routes/calendars.js';
 import { eventsRouter } from './routes/events.js';
 import { categoriesRouter } from './routes/categories.js';
+import { rsvpRouter } from './routes/rsvp.js';
 import { tasksRouter } from './routes/tasks.js';
 import { birthdaysRouter } from './routes/birthdays.js';
 import { sessionsRouter } from './routes/sessions.js';
@@ -47,6 +48,8 @@ app.use(httpLogger);
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', authRouter);
+// Rota pública: resposta de convite (RSVP) via link do e-mail, sem login.
+app.use('/api/rsvp', rsvpRouter);
 app.use('/api/calendars', authMiddleware, calendarsRouter);
 app.use('/api/events', authMiddleware, eventsRouter);
 app.use('/api/categories', authMiddleware, categoriesRouter);

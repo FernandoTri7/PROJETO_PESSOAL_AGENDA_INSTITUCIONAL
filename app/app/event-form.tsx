@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { Text, TextInput, TouchableOpacity, View, StyleSheet, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { api } from '../src/api';
 import { getCatLabel, setCategories } from '../src/theme';
@@ -112,6 +112,16 @@ export default function EventForm() {
     setAttName(''); setAttUrl('');
   }
   function removeAttachment(i: number) { setEv((e: any) => ({ ...e, attachments: e.attachments.filter((_: any, j: number) => j !== i) })); }
+  async function sendInvites() {
+    if (!id) return;
+    try {
+      const r = await api(`/events/${id}/invite`, { method: 'POST' });
+      const sent = r.results.filter((x: any) => x.sent).length;
+      Alert.alert('Convites', r.configured
+        ? `Enviados: ${sent}/${r.results.length}.`
+        : `SMTP não configurado — ${r.results.length} simulado(s).`);
+    } catch (e: any) { Alert.alert('Erro', e.message); }
+  }
 
   // Categorias do tipo da agenda selecionada + as de escopo TODAS.
   const calType = calendars.find((c) => c.id === ev.calendarId)?.type;
@@ -153,7 +163,10 @@ export default function EventForm() {
           <TouchableOpacity onPress={() => removeGuest(i)}><Text style={cf.removeText}>✕</Text></TouchableOpacity>
         </View>
       ))}
-      <Text style={cf.hint}>O envio de convites por e-mail será habilitado em breve.</Text>
+      {!!id && (ev.guests || []).length > 0 && (
+        <TouchableOpacity style={cf.inviteBtn} onPress={sendInvites}><Text style={cf.inviteText}>Enviar convites por e-mail</Text></TouchableOpacity>
+      )}
+      <Text style={cf.hint}>Salve o evento antes de enviar os convites.</Text>
 
       <Field label="Videoconferência (link)" value={ev.videoConfLink} onChange={(v: string) => setEv({ ...ev, videoConfLink: v })} placeholder="https://meet.google.com/..." />
 
@@ -186,4 +199,6 @@ const cf = StyleSheet.create({
   listText: { color: '#1F2933', fontSize: 14, flex: 1 },
   removeText: { color: '#9AA0A6', fontSize: 16, paddingHorizontal: 8 },
   hint: { color: '#9AA0A6', fontSize: 12, marginBottom: 14, marginTop: 2 },
+  inviteBtn: { borderColor: '#0F5C5E', borderWidth: 1, borderRadius: 8, padding: 10, alignItems: 'center', marginTop: 6 },
+  inviteText: { color: '#0F5C5E', fontWeight: '600' },
 });
