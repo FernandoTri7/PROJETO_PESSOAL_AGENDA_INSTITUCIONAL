@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss } from '../../src/webCss';
@@ -110,6 +111,10 @@ export default function BirthdaysWeb() {
   const [modal, setModal] = useState<any>(null);
   const [filter, setFilter] = useState<'TODOS'|'CRIANCA'|'JOVEM'|'ADULTO'>('TODOS');
   const [search, setSearch] = useState('');
+
+  // FAB global: ?new=<ts> abre o modal de novo aniversário
+  const { new: newParam } = useLocalSearchParams<{ new?: string }>();
+  useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
     const [bds, cals] = await Promise.all([api('/birthdays'), api('/calendars')]).catch(()=>[[],[]]);

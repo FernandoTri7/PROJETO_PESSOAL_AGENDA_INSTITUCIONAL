@@ -22,7 +22,11 @@ eventsRouter.get('/', async (req, res) => {
   const where = { calendarId: { in: calendarIds } };
   if (q) where.OR = [{ title: { contains: q } }, { description: { contains: q } }, { location: { contains: q } }];
 
-  const events = await prisma.event.findMany({ where, orderBy: { start: 'asc' } });
+  const events = await prisma.event.findMany({
+    where,
+    orderBy: { start: 'asc' },
+    include: { guests: true, attachments: true },
+  });
   const fromD = from ? new Date(from) : null;
   const toD = to ? new Date(to) : null;
   // A paginação é aplicada sobre as ocorrências já expandidas (recorrências geram itens extras).
@@ -49,7 +53,15 @@ eventsRouter.post('/', validateBody(eventCreateSchema), async (req, res) => {
       color: b.color,
       rrule: b.rrule,
       reminders: b.reminders,
+      visibility: b.visibility || 'padrao',
+      availability: b.availability || 'OCUPADO',
+      videoConfLink: b.videoConfLink,
+      guests: b.guests?.length ? { create: b.guests.map((g) => ({ email: g.email, name: g.name })) } : undefined,
+      attachments: b.attachments?.length
+        ? { create: b.attachments.map((a) => ({ name: a.name, url: a.url, provider: a.provider || 'link', mimeType: a.mimeType })) }
+        : undefined,
     },
+    include: { guests: true, attachments: true },
   });
   res.json(event);
 });
@@ -72,7 +84,16 @@ eventsRouter.put('/:id', validateBody(eventUpdateSchema), async (req, res) => {
       color: b.color,
       rrule: b.rrule,
       reminders: b.reminders,
+      visibility: b.visibility ?? existing.visibility,
+      availability: b.availability ?? existing.availability,
+      videoConfLink: b.videoConfLink,
+      // Listas: quando enviadas, substituem por completo (replace).
+      guests: b.guests ? { deleteMany: {}, create: b.guests.map((g) => ({ email: g.email, name: g.name })) } : undefined,
+      attachments: b.attachments
+        ? { deleteMany: {}, create: b.attachments.map((a) => ({ name: a.name, url: a.url, provider: a.provider || 'link', mimeType: a.mimeType })) }
+        : undefined,
     },
+    include: { guests: true, attachments: true },
   });
   res.json(event);
 });

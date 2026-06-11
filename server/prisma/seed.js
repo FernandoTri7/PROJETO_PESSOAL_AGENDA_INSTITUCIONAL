@@ -1,9 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedCategories } from './seedCategories.js';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  await seedCategories(prisma);
+
   const admin = await prisma.user.upsert({
     where: { email: 'daniel@tri7.com.br' },
     update: {},

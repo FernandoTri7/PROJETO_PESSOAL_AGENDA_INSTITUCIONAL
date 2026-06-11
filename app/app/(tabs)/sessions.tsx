@@ -55,9 +55,6 @@ export default function Sessions() {
           </TouchableOpacity>
         )}
       />
-      <TouchableOpacity style={s.fab} onPress={() => router.push('/session-form')}>
-        <Text style={s.fabText}>＋</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -83,6 +80,4 @@ const s = StyleSheet.create({
   date: { color: colors.green, fontSize: 13 },
   meta: { color: colors.muted, fontSize: 12, marginTop: 4 },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 24 },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
-  fabText: { color: '#fff', fontSize: 28, lineHeight: 32 },
 });

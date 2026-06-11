@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss, fmtDate } from '../../src/webCss';
@@ -97,6 +98,10 @@ export default function TasksWeb() {
   const [modal, setModal] = useState<any>(null);
   const [filter, setFilter] = useState<'all'|'pending'|'done'>('pending');
   const [newTitle, setNewTitle] = useState('');
+
+  // FAB global: ?new=<ts> abre o modal de nova tarefa
+  const { new: newParam } = useLocalSearchParams<{ new?: string }>();
+  useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
     const [ts, cals] = await Promise.all([api('/tasks'), api('/calendars')]).catch(()=>[[],[]]);

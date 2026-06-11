@@ -97,6 +97,7 @@ export const colors = {
   text: t.foreground,
   muted: t.mutedForeground,
   primary: t.primary,
+  accent: t.accent, // laranja — cor de CTA (FAB "criar")
   green: t.success,
   red: t.destructive,
   yellow: t.warning,
@@ -151,10 +152,30 @@ const ENUM_CAT_LABEL: Record<string, string> = {
   FAMILIA: 'Família', VIAGEM: 'Viagem', ANIVERSARIO: 'Aniversário', OUTRO: 'Outro',
 };
 
+// Mapa de categorias usado por getCatColor/getCatLabel. Começa com os fallbacks do código
+// (NAV_CATS + enums nativos) e é sobrescrito por setCategories() quando a API responde.
+type CatEntry = { label: string; color: string };
+
+function buildFallbackMap(): Record<string, CatEntry> {
+  const m: Record<string, CatEntry> = {};
+  for (const c of NAV_CATS) m[c.key] = { label: c.label, color: c.color };
+  for (const k of Object.keys(ENUM_CAT_COLOR)) m[k] = { label: ENUM_CAT_LABEL[k] ?? k, color: ENUM_CAT_COLOR[k] };
+  return m;
+}
+
+let CAT_MAP: Record<string, CatEntry> = buildFallbackMap();
+
+// Alimenta o mapa com as categorias vindas de /api/categories (mantém os fallbacks como base).
+export function setCategories(list: { key: string; label: string; color: string }[]) {
+  const m = buildFallbackMap();
+  for (const c of list) m[c.key] = { label: c.label, color: c.color };
+  CAT_MAP = m;
+}
+
 export function getCatColor(category: string) {
-  return NAV_CATS.find((c) => c.key === category)?.color ?? ENUM_CAT_COLOR[category] ?? '#9AA0A6';
+  return CAT_MAP[category]?.color ?? '#9AA0A6';
 }
 
 export function getCatLabel(category: string) {
-  return NAV_CATS.find((c) => c.key === category)?.label ?? ENUM_CAT_LABEL[category] ?? category;
+  return CAT_MAP[category]?.label ?? category;
 }

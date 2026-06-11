@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { api, clearToken } from '../../src/api';
+import { loadPrefs, savePrefs, getPrefs } from '../../src/prefs';
+import { requestNotificationPermission } from '../../src/notifications';
 import { injectWebCss } from '../../src/webCss';
 
 function ShareModal({ cal, onClose, onSaved }: any) {
@@ -185,32 +187,133 @@ function VegetalModal({ lote, onClose, onSaved }: any) {
   );
 }
 
+const SCOPE_LABEL: Record<string, string> = {
+  PESSOAL: 'Pessoal', FAMILIAR: 'Familiar', INSTITUCIONAL: 'Institucional', TODAS: 'Todas as agendas',
+};
+
+function CategoryModal({ cat, onClose, onSaved }: any) {
+  const isNew = !cat?.id;
+  const [form, setForm] = useState<any>({ label:'', color:'#0F5C5E', scope:'TODAS', ...(cat||{}) });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  function set(k: string) { return (e: any) => setForm((f:any) => ({...f, [k]: e.target.value})); }
+
+  async function save() {
+    if (!form.label.trim()) { setError('Nome é obrigatório'); return; }
+    setSaving(true); setError('');
+    try {
+      const body = { label: form.label.trim(), color: form.color, scope: form.scope };
+      if (isNew) await api('/categories', { method: 'POST', body });
+      else       await api(`/categories/${cat.id}`, { method: 'PUT', body });
+      onSaved();
+    } catch(e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  async function remove() {
+    if (!confirm(`Excluir a categoria "${cat.label}"? Eventos existentes mantêm o registro, mas ficam sem cor/rótulo.`)) return;
+    await api(`/categories/${cat.id}`, { method: 'DELETE' });
+    onSaved();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2 className="modal-title">{isNew ? 'Nova Categoria' : 'Editar Categoria'}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="form-error">{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Nome *</label>
+            <input className="form-input" value={form.label} onChange={set('label')} placeholder="Ex.: Reunião" autoFocus />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Agenda (escopo)</label>
+              <select className="form-select" value={form.scope} onChange={set('scope')}>
+                <option value="TODAS">Todas as agendas</option>
+                <option value="PESSOAL">Pessoal</option>
+                <option value="FAMILIAR">Familiar</option>
+                <option value="INSTITUCIONAL">Institucional</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Cor</label>
+              <input className="form-input" type="color" value={form.color} onChange={set('color')} style={{ height:40, padding:4 }} />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
+          <span style={{ flex:1 }} />
+          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando...':'Salvar'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MoreWeb() {
   useEffect(() => { injectWebCss(); }, []);
 
   const [calendars, setCalendars] = useState<any[]>([]);
   const [vegetal, setVegetal] = useState<any>({ total: 0, lotes: [] });
+  const [cats, setCats] = useState<any[]>([]);
   const [calModal, setCalModal] = useState<any>(null);
   const [shareModal, setShareModal] = useState<any>(null);
   const [vegModal, setVegModal] = useState<any>(null);
+  const [catModal, setCatModal] = useState<any>(null);
+  const [prefs, setPrefs] = useState(getPrefs());
 
   async function load() {
-    const [cals, veg] = await Promise.all([api('/calendars'), api('/vegetal')]).catch(()=>[[],{total:0,lotes:[]}]);
-    setCalendars(cals); setVegetal(veg);
+    const [cals, veg, categories] = await Promise.all([api('/calendars'), api('/vegetal'), api('/categories')]).catch(()=>[[],{total:0,lotes:[]},[]]);
+    setCalendars(cals); setVegetal(veg); setCats(categories);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadPrefs().then(setPrefs); }, []);
+
+  async function toggleNotifications(on: boolean) {
+    if (on) { const ok = await requestNotificationPermission(); if (!ok) { alert('Permissão de notificação negada pelo navegador.'); return; } }
+    setPrefs(await savePrefs({ notificationsEnabled: on }));
+  }
+  async function toggleInstitutional(on: boolean) {
+    await savePrefs({ useInstitutional: on });
+    // Recarrega para o menu lateral e os filtros de evento refletirem a mudança.
+    if (typeof window !== 'undefined') window.location.reload();
+  }
 
   async function logout() {
     await clearToken();
     router.replace('/login');
   }
 
-  function onSaved() { setCalModal(null); setShareModal(null); setVegModal(null); load(); }
+  function onSaved() { setCalModal(null); setShareModal(null); setVegModal(null); setCatModal(null); load(); }
 
   return (
     <div className="page">
       <div className="page-header">
         <h1 className="page-title" style={{ display:'inline-flex', alignItems:'center', gap:8 }}><Ionicons name="settings-outline" size={20} /> Configurações</h1>
+      </div>
+
+      {/* Preferences section */}
+      <div className="section-label">Preferências</div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <label style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer' }}>
+          <input type="checkbox" checked={prefs.notificationsEnabled} onChange={e => toggleNotifications(e.target.checked)} />
+          <div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Notificações de eventos</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>Avisa antes dos eventos (com base nos lembretes), enquanto o app está aberto.</div>
+          </div>
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer', borderTop:'1px solid var(--border)' }}>
+          <input type="checkbox" checked={prefs.useInstitutional} onChange={e => toggleInstitutional(e.target.checked)} />
+          <div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Usar agenda institucional</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>Quando desligado, oculta a aba Sessões e os eventos das agendas institucionais.</div>
+          </div>
+        </label>
       </div>
 
       {/* Calendars section */}
@@ -238,6 +341,27 @@ export default function MoreWeb() {
                 ><Ionicons name="calendar-outline" size={14} /> .ics</a>
                 <button className="btn btn-outline btn-sm" onClick={() => setShareModal(cal)}>Compartilhar</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setCalModal(cal)} aria-label="Editar agenda"><Ionicons name="create-outline" size={16} /></button>
+              </div>
+            ))
+        }
+      </div>
+
+      {/* Categories section */}
+      <div className="section-label">Categorias de evento</div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+          <button className="btn btn-primary btn-sm" onClick={() => setCatModal({})}>+ Nova Categoria</button>
+        </div>
+        {cats.length === 0
+          ? <div className="empty" style={{ padding:16 }}><div className="empty-text">Nenhuma categoria</div></div>
+          : cats.map(cat => (
+              <div key={cat.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
+                <div style={{ width:16, height:16, borderRadius:4, background:cat.color, flexShrink:0 }} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600, fontSize:14 }}>{cat.label}</div>
+                </div>
+                <span className="pill" style={{ background:cat.color+'22', color:cat.color, fontSize:10 }}>{SCOPE_LABEL[cat.scope] || cat.scope}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setCatModal(cat)} aria-label="Editar categoria"><Ionicons name="create-outline" size={16} /></button>
               </div>
             ))
         }
@@ -305,6 +429,7 @@ export default function MoreWeb() {
       {calModal   !== null && <CalModal     cal={calModal}   onClose={()=>setCalModal(null)}   onSaved={onSaved} />}
       {shareModal !== null && <ShareModal   cal={shareModal} onClose={()=>setShareModal(null)} onSaved={onSaved} />}
       {vegModal   !== null && <VegetalModal lote={vegModal}  onClose={()=>setVegModal(null)}   onSaved={onSaved} />}
+      {catModal   !== null && <CategoryModal cat={catModal}  onClose={()=>setCatModal(null)}   onSaved={onSaved} />}
     </div>
   );
 }

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
+import { loadPrefs, getPrefs } from '../../src/prefs';
+import { requestNotificationPermission, scheduleEventNotifications } from '../../src/notifications';
 import {
-  injectWebCss, getCatColor, getCatLabel, NAV_CATS,
+  injectWebCss, getCatColor, getCatLabel, setCategories,
   MONTHS_PT, WDAYS_PT, WDAYS_SHORT, fmtDate, fmtTime, dayKey,
 } from '../../src/webCss';
 
@@ -19,18 +22,51 @@ const RECURRENCES = [
 
 function todayKey() { return dayKey(new Date()); }
 
+// Dias (keys YYYY-MM-DD) que um evento ocupa. Eventos "dia inteiro" de vários dias
+// aparecem em cada dia do intervalo; os demais ficam apenas no dia de início.
+function eventDayKeys(ev: any): string[] {
+  const startK = dayKey(new Date(ev.start));
+  if (!ev.allDay || !ev.end) return [startK];
+  const endK = dayKey(new Date(ev.end));
+  if (endK <= startK) return [startK];
+  const keys: string[] = [];
+  const d = new Date(ev.start); d.setHours(12, 0, 0, 0); // meio-dia evita borda de fuso/DST
+  while (dayKey(d) <= endK && keys.length < 366) {
+    keys.push(dayKey(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return keys;
+}
+
+function bucketByDay(events: any[]): Record<string, any[]> {
+  const byDay: Record<string, any[]> = {};
+  for (const ev of events) for (const k of eventDayKeys(ev)) (byDay[k] ||= []).push(ev);
+  return byDay;
+}
+
+// Linha de horário/intervalo exibida em cada item de evento.
+function evMeta(ev: any): string {
+  if (!ev.allDay) return `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`;
+  const sK = dayKey(new Date(ev.start)), eK = dayKey(new Date(ev.end));
+  if (eK <= sK) return 'Dia inteiro';
+  const short = (iso: string) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS_PT[d.getMonth()].slice(0, 3).toLowerCase()}`; };
+  return `Dia inteiro · ${short(ev.start)}–${short(ev.end)}`;
+}
+
 // ─── Event Form Modal ───────────────────────────────────────────────────────
 
-function EventModal({ ev, calendars, onClose, onSaved }: any) {
+function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
   const isNew = !ev?.id;
   const [form, setForm] = useState<any>({
     title: '', calendarId: calendars[0]?.id || '', category: 'reuniao',
-    startDate: todayKey(), startTime: '09:00', endTime: '10:00',
+    startDate: todayKey(), endDate: todayKey(), startTime: '09:00', endTime: '10:00',
     allDay: false, location: '', description: '', rrule: '', reminders: '',
+    visibility: 'padrao', availability: 'OCUPADO', videoConfLink: '', guests: [], attachments: [],
     ...( ev
       ? {
           ...ev,
-          startDate: ev.start ? new Date(ev.start).toISOString().slice(0,10) : todayKey(),
+          startDate: ev.start ? dayKey(new Date(ev.start)) : (ev.startDate || todayKey()),
+          endDate:   ev.end   ? dayKey(new Date(ev.end))   : (ev.start ? dayKey(new Date(ev.start)) : (ev.startDate || todayKey())),
           startTime: ev.start ? fmtTime(ev.start) : '09:00',
           endTime:   ev.end   ? fmtTime(ev.end)   : '10:00',
           rrule: ev.rrule || '',
@@ -39,9 +75,37 @@ function EventModal({ ev, calendars, onClose, onSaved }: any) {
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [guestEmail, setGuestEmail] = useState('');
+  const [attName, setAttName] = useState('');
+  const [attUrl, setAttUrl] = useState('');
 
   function set(k: string) { return (e: any) => setForm((f: any) => ({ ...f, [k]: e.target ? e.target.value : e })); }
   function setB(k: string) { return (e: any) => setForm((f: any) => ({ ...f, [k]: e.target.checked })); }
+
+  function addGuest() {
+    const email = guestEmail.trim();
+    if (!email) return;
+    setForm((f: any) => ({ ...f, guests: [...(f.guests || []), { email }] }));
+    setGuestEmail('');
+  }
+  function removeGuest(i: number) { setForm((f: any) => ({ ...f, guests: f.guests.filter((_: any, j: number) => j !== i) })); }
+  function addAttachment() {
+    const name = attName.trim(), url = attUrl.trim();
+    if (!name || !url) return;
+    setForm((f: any) => ({ ...f, attachments: [...(f.attachments || []), { name, url, provider: 'link' }] }));
+    setAttName(''); setAttUrl('');
+  }
+  function removeAttachment(i: number) { setForm((f: any) => ({ ...f, attachments: f.attachments.filter((_: any, j: number) => j !== i) })); }
+
+  // Categorias visíveis = as do tipo da agenda selecionada + as de escopo TODAS.
+  const calType = calendars.find((c: any) => c.id === form.calendarId)?.type;
+  const allCats = (categories && categories.length) ? categories : [];
+  let catOptions = allCats.filter((c: any) => !calType || c.scope === calType || c.scope === 'TODAS');
+  // Garante que a categoria atual apareça mesmo se fora do escopo (ex.: evento antigo).
+  if (form.category && !catOptions.some((c: any) => c.key === form.category)) {
+    catOptions = [{ key: form.category, label: getCatLabel(form.category) }, ...catOptions];
+  }
 
   async function save() {
     if (!form.title.trim()) { setError('Título é obrigatório'); return; }
@@ -51,9 +115,15 @@ function EventModal({ ev, calendars, onClose, onSaved }: any) {
         calendarId: form.calendarId, title: form.title.trim(),
         description: form.description || null, location: form.location || null,
         category: form.category, rrule: form.rrule || null, reminders: form.reminders || null,
+        visibility: form.visibility, availability: form.availability,
+        videoConfLink: form.videoConfLink || null,
+        guests: (form.guests || []).map((g: any) => ({ email: g.email, name: g.name || null })),
+        attachments: (form.attachments || []).map((a: any) => ({ name: a.name, url: a.url, provider: a.provider || 'link', mimeType: a.mimeType || null })),
         allDay: form.allDay,
         start: form.allDay ? `${form.startDate}T00:00:00` : `${form.startDate}T${form.startTime}:00`,
-        end:   form.allDay ? `${form.startDate}T23:59:00` : `${form.startDate}T${form.endTime}:00`,
+        end:   form.allDay
+          ? `${(form.endDate && form.endDate >= form.startDate) ? form.endDate : form.startDate}T23:59:00`
+          : `${form.startDate}T${form.endTime}:00`,
       };
       if (isNew) await api('/events', { method: 'POST', body });
       else       await api(`/events/${ev.id}`, { method: 'PUT', body });
@@ -93,14 +163,22 @@ function EventModal({ ev, calendars, onClose, onSaved }: any) {
             <div className="form-group">
               <label className="form-label">Categoria</label>
               <select className="form-select" value={form.category} onChange={set('category')}>
-                {NAV_CATS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                {catOptions.map((c: any) => <option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Data</label>
-            <input className="form-input" type="date" value={form.startDate} onChange={set('startDate')} />
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{form.allDay ? 'Data início' : 'Data'}</label>
+              <input className="form-input" type="date" value={form.startDate} onChange={set('startDate')} />
+            </div>
+            {form.allDay && (
+              <div className="form-group">
+                <label className="form-label">Data fim</label>
+                <input className="form-input" type="date" value={form.endDate} min={form.startDate} onChange={set('endDate')} />
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 13 }}>
@@ -142,6 +220,82 @@ function EventModal({ ev, calendars, onClose, onSaved }: any) {
             <label className="form-label">Lembretes (min antes, ex: 10,60)</label>
             <input className="form-input" value={form.reminders || ''} onChange={set('reminders')} placeholder="10,60" />
           </div>
+
+          <div className="divider" />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowMore(s => !s)} style={{ marginBottom: 8 }}>
+            {showMore ? '▲' : '▼'} Mais opções
+          </button>
+
+          {showMore && (
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Visibilidade</label>
+                  <select className="form-select" value={form.visibility} onChange={set('visibility')}>
+                    <option value="padrao">Padrão</option>
+                    <option value="publico">Público</option>
+                    <option value="privado">Privado</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Disponibilidade</label>
+                  <select className="form-select" value={form.availability} onChange={set('availability')}>
+                    <option value="OCUPADO">Ocupado</option>
+                    <option value="LIVRE">Livre</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Convidados</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="form-input" type="email" placeholder="email@exemplo.com" value={guestEmail}
+                    onChange={e => setGuestEmail(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGuest(); } }} />
+                  <button type="button" className="btn btn-outline btn-sm" onClick={addGuest}>Adicionar</button>
+                </div>
+                {form.guests?.length > 0 && (
+                  <div className="chip-row" style={{ marginTop: 8 }}>
+                    {form.guests.map((g: any, i: number) => (
+                      <span key={i} className="chip selected" style={{ cursor: 'default' }}>
+                        {g.email}<span style={{ marginLeft: 6, cursor: 'pointer' }} onClick={() => removeGuest(i)}>✕</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="form-hint">O envio de convites por e-mail será habilitado em breve.</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Videoconferência</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="form-input" placeholder="https://meet.google.com/..." value={form.videoConfLink || ''} onChange={set('videoConfLink')} />
+                  <button type="button" className="btn btn-outline btn-sm" disabled title="Disponível ao conectar a conta Google (em breve)">Gerar Meet</button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Anexos (link)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="form-input" placeholder="Nome" value={attName} onChange={e => setAttName(e.target.value)} style={{ flex: '0 0 30%' }} />
+                  <input className="form-input" placeholder="https://..." value={attUrl} onChange={e => setAttUrl(e.target.value)} />
+                  <button type="button" className="btn btn-outline btn-sm" onClick={addAttachment}>Adicionar</button>
+                </div>
+                {form.attachments?.length > 0 && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {form.attachments.map((a: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                        <Ionicons name="attach-outline" size={14} color="#52606D" />
+                        <a href={a.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</a>
+                        <span style={{ cursor: 'pointer', color: 'var(--muted)' }} onClick={() => removeAttachment(i)}>✕</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="form-hint">Anexar do Google Drive será habilitado em breve.</div>
+              </div>
+            </>
+          )}
         </div>
         <div className="modal-footer">
           {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
@@ -169,11 +323,7 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
   while (cells.length % 7 !== 0) cells.push(null);
   const today = todayKey();
 
-  const byDay: Record<string, any[]> = {};
-  for (const ev of events) {
-    const k = dayKey(new Date(ev.start));
-    (byDay[k] ||= []).push(ev);
-  }
+  const byDay = bucketByDay(events);
 
   const dayEvs = byDay[selected] || [];
 
@@ -235,7 +385,7 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
                     <div className="ev-info">
                       <div className="ev-title">{ev.title}{ev.occurrence ? ' ↻' : ''}</div>
                       <div className="ev-meta">
-                        {ev.allDay ? 'Dia inteiro' : `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`}
+                        {evMeta(ev)}
                         {ev.location ? ` · ${ev.location}` : ''}
                       </div>
                     </div>
@@ -261,11 +411,7 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
 
 function ListView({ events, onEdit }: any) {
   if (!events.length) return <div className="empty"><div className="empty-icon"><Ionicons name="list-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
-  const grouped: Record<string, any[]> = {};
-  for (const ev of events) {
-    const k = dayKey(new Date(ev.start));
-    (grouped[k] ||= []).push(ev);
-  }
+  const grouped = bucketByDay(events);
   const keys = Object.keys(grouped).sort();
   return (
     <div>
@@ -282,7 +428,7 @@ function ListView({ events, onEdit }: any) {
                   <div className="ev-info">
                     <div className="ev-title">{ev.title}{ev.occurrence ? ' ↻' : ''}</div>
                     <div className="ev-meta">
-                      {ev.allDay ? 'Dia inteiro' : `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`}
+                      {evMeta(ev)}
                       {ev.location ? ` · ${ev.location}` : ''}
                     </div>
                   </div>
@@ -329,7 +475,7 @@ function CatView({ events, onEdit }: any) {
                     <div className="ev-bar" style={{ background: color }} />
                     <div className="ev-info">
                       <div className="ev-title">{ev.title}</div>
-                      <div className="ev-meta">{fmtDate(ev.start)} · {ev.allDay ? 'Dia inteiro' : `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`}</div>
+                      <div className="ev-meta">{fmtDate(ev.start)} · {evMeta(ev)}</div>
                     </div>
                   </div>
                 ))}
@@ -347,7 +493,7 @@ function CatView({ events, onEdit }: any) {
 function AnnualView({ year, events, onDayClick }: any) {
   const today = todayKey();
   const byDay: Record<string, number> = {};
-  for (const ev of events) { const k = dayKey(new Date(ev.start)); byDay[k] = (byDay[k]||0)+1; }
+  for (const ev of events) for (const k of eventDayKeys(ev)) byDay[k] = (byDay[k]||0)+1;
 
   return (
     <div className="year-grid">
@@ -392,9 +538,15 @@ export default function AgendaWeb() {
   const [view, setView] = useState<'mensal'|'lista'|'categoria'|'anual'>('mensal');
   const [events, setEvents] = useState<any[]>([]);
   const [calendars, setCalendars] = useState<any[]>([]);
+  const [cats, setCats] = useState<any[]>([]);
+  const [prefs, setPrefs] = useState(getPrefs());
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState<any>(null); // null | 'new' | event object
   const [loading, setLoading] = useState(false);
+
+  // FAB global: ?new=<ts> abre o modal de novo evento
+  const { new: newParam } = useLocalSearchParams<{ new?: string }>();
+  useEffect(() => { if (newParam) setModal({ _newDate: selected }); }, [newParam]);
 
   // For annual: load entire year
   const year = month.getFullYear();
@@ -412,13 +564,22 @@ export default function AgendaWeb() {
       }
       const params = new URLSearchParams({ from, to });
       if (query) params.set('q', query);
-      setEvents(await api(`/events?${params}`));
+      // Quando o usuário desativa a agenda institucional, restringe às demais agendas.
+      if (!prefs.useInstitutional && calendars.length) {
+        const allowed = calendars.filter((c: any) => c.type !== 'INSTITUCIONAL').map((c: any) => c.id);
+        params.set('calendarIds', allowed.join(',') || '__none__');
+      }
+      const evs = await api(`/events?${params}`);
+      setEvents(evs);
+      scheduleEventNotifications(evs, prefs.notificationsEnabled);
     } catch (e) { console.warn(e); }
     finally { setLoading(false); }
-  }, [month, view, query, year]);
+  }, [month, view, query, year, prefs, calendars]);
 
   useEffect(() => {
     api('/calendars').then(setCalendars).catch(()=>{});
+    api('/categories').then((list) => { setCategories(list); setCats(list); }).catch(()=>{});
+    loadPrefs().then((p) => { setPrefs(p); if (p.notificationsEnabled) requestNotificationPermission(); });
   }, []);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
@@ -487,14 +648,12 @@ export default function AgendaWeb() {
       {view === 'categoria' && <CatView events={events} onEdit={onEditEv} />}
       {view === 'anual' && <AnnualView year={year} events={events} onDayClick={onAnnualDay} />}
 
-      {/* FAB */}
-      <button className="fab" onClick={() => setModal({ _newDate: selected })} title="Novo evento">＋</button>
-
       {/* Modal */}
       {modal && (
         <EventModal
           ev={modal._newDate ? { startDate: modal._newDate } : modal}
           calendars={calendars}
+          categories={cats}
           onClose={() => setModal(null)}
           onSaved={onSaved}
         />

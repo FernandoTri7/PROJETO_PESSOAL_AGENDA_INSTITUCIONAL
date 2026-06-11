@@ -22,6 +22,7 @@ const optText = z.string().nullish();
 
 // ── Enums do domínio ──
 const calendarType = z.enum(['PESSOAL', 'FAMILIAR', 'INSTITUCIONAL']);
+const categoryScope = z.enum(['PESSOAL', 'FAMILIAR', 'INSTITUCIONAL', 'TODAS']);
 const memberRole = z.enum(['OWNER', 'EDITOR', 'VIEWER']);
 const taskPriority = z.enum(['BAIXA', 'MEDIA', 'ALTA']);
 const vegetalLocal = z.enum(['GELADEIRA', 'FORA', 'OUTRO']);
@@ -42,6 +43,11 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'senha é obrigatória'),
 });
 
+export const prefsSchema = z.object({
+  notificationsEnabled: z.boolean().optional(),
+  useInstitutional: z.boolean().optional(),
+}).partial();
+
 // ── Agendas e membros ──
 export const calendarCreateSchema = z.object({
   name: z.string().trim().min(1, 'nome é obrigatório'),
@@ -50,12 +56,32 @@ export const calendarCreateSchema = z.object({
 });
 export const calendarUpdateSchema = calendarCreateSchema.partial();
 
+// ── Categorias ──
+export const categoryCreateSchema = z.object({
+  key: z.string().trim().min(1).optional(), // se ausente, derivada do label (slug)
+  label: z.string().trim().min(1, 'nome é obrigatório'),
+  color: z.string().optional(),
+  scope: categoryScope.optional(),
+  order: numLike.optional(),
+});
+export const categoryUpdateSchema = categoryCreateSchema.partial();
+
 export const memberSchema = z.object({
   email: z.string().trim().email('e-mail inválido'),
   role: memberRole.optional(),
 });
 
 // ── Eventos ──
+const eventVisibility = z.enum(['padrao', 'publico', 'privado']);
+const eventAvailability = z.enum(['OCUPADO', 'LIVRE']);
+const guestSchema = z.object({ email: z.string().trim().email('e-mail inválido'), name: optText });
+const attachmentSchema = z.object({
+  name: z.string().trim().min(1),
+  url: z.string().trim().min(1),
+  provider: z.string().optional(),
+  mimeType: optText,
+});
+
 export const eventCreateSchema = z.object({
   calendarId: z.string().min(1, 'calendarId é obrigatório'),
   title: z.string().trim().min(1, 'título é obrigatório'),
@@ -68,6 +94,11 @@ export const eventCreateSchema = z.object({
   color: optText,
   rrule: optText,
   reminders: optText,
+  visibility: eventVisibility.optional(),
+  availability: eventAvailability.optional(),
+  videoConfLink: optText,
+  guests: z.array(guestSchema).optional(),
+  attachments: z.array(attachmentSchema).optional(),
 });
 export const eventUpdateSchema = eventCreateSchema.partial();
 

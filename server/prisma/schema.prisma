@@ -20,6 +20,8 @@ model User {
   // ADMIN | GESTOR | MEMBRO | VISITANTE
   role         String   @default("MEMBRO")
   active       Boolean  @default(true)
+  // Preferências do usuário em JSON. Ex: {"notificationsEnabled":true,"useInstitutional":false}
+  prefs        String?
   createdAt    DateTime @default(now())
 
   memberships CalendarMember[]
@@ -43,6 +45,21 @@ model Calendar {
   tasks     Task[]
   birthdays Birthday[]
   sessions  SessionRecord[]
+}
+
+// Categorias de evento (CRUD). A key é gravada em Event.category (string) — sem FK,
+// para nunca orfanar eventos; categoria removida vira active=false e cai no cinza de fallback.
+model Category {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  color     String   @default("#9AA0A6")
+  // PESSOAL | FAMILIAR | INSTITUCIONAL | TODAS (TODAS atende todas as agendas)
+  scope     String   @default("TODAS")
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model CalendarMember {
@@ -77,13 +94,50 @@ model Event {
   rrule       String?
   // Minutos antes do evento para notificar, separados por vírgula. Ex: "10,60"
   reminders   String?
+  // padrao | publico | privado
+  visibility   String   @default("padrao")
+  // OCUPADO | LIVRE (disponibilidade exibida na agenda)
+  availability String   @default("OCUPADO")
+  // Link de videoconferência (Meet manual agora; gerado via Google na fase C)
+  videoConfLink String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
-  creator  User     @relation("EventCreator", fields: [creatorId], references: [id])
+  calendar    Calendar     @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  creator     User         @relation("EventCreator", fields: [creatorId], references: [id])
+  guests      EventGuest[]
+  attachments Attachment[]
 
   @@index([calendarId, start])
+}
+
+model EventGuest {
+  id        String   @id @default(cuid())
+  eventId   String
+  email     String
+  name      String?
+  // PENDENTE | ACEITO | RECUSADO (mudanças de status são da fase B — convite por e-mail)
+  status    String   @default("PENDENTE")
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  eventId   String
+  // "link" (URL manual, disponível agora) | "drive" (Google Drive, fase C)
+  provider  String   @default("link")
+  name      String
+  url       String
+  mimeType  String?
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
 }
 
 model Task {

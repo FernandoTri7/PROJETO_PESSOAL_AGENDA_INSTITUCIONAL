@@ -1,20 +1,39 @@
 import { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Linking, Switch, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { api, setToken, API_URL } from '../../src/api';
+import { loadPrefs, savePrefs, getPrefs } from '../../src/prefs';
+import { requestNotificationPermission } from '../../src/notifications';
 import { colors } from '../../src/theme';
+
+const SCOPE_LABEL: Record<string, string> = {
+  PESSOAL: 'Pessoal', FAMILIAR: 'Familiar', INSTITUCIONAL: 'Institucional', TODAS: 'Todas',
+};
 
 export default function More() {
   const [calendars, setCalendars] = useState<any[]>([]);
   const [vegetal, setVegetal] = useState<any>(null);
+  const [cats, setCats] = useState<any[]>([]);
+  const [prefs, setPrefs] = useState(getPrefs());
 
   const load = useCallback(async () => {
     try {
       setCalendars(await api('/calendars'));
       setVegetal(await api('/vegetal'));
+      setCats(await api('/categories'));
+      setPrefs(await loadPrefs());
     } catch (e) { console.warn(e); }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  async function toggleNotifications(on: boolean) {
+    if (on) { const ok = await requestNotificationPermission(); if (!ok) { Alert.alert('Permissão negada', 'Ative as notificações nas configurações do sistema.'); return; } }
+    setPrefs(await savePrefs({ notificationsEnabled: on }));
+  }
+  async function toggleInstitutional(on: boolean) {
+    setPrefs(await savePrefs({ useInstitutional: on }));
+    Alert.alert('Preferência salva', 'A aba Sessões será atualizada ao reabrir o app.');
+  }
 
   async function logout() {
     await setToken(null);
@@ -23,6 +42,22 @@ export default function More() {
 
   return (
     <View style={s.container}>
+      <Text style={s.section}>Preferências</Text>
+      <View style={s.card}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>Notificações de eventos</Text>
+          <Text style={s.meta}>Avisa antes dos eventos, com base nos lembretes.</Text>
+        </View>
+        <Switch value={prefs.notificationsEnabled} onValueChange={toggleNotifications} />
+      </View>
+      <View style={s.card}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>Usar agenda institucional</Text>
+          <Text style={s.meta}>Desligado: oculta Sessões e eventos institucionais.</Text>
+        </View>
+        <Switch value={prefs.useInstitutional} onValueChange={toggleInstitutional} />
+      </View>
+
       <Text style={s.section}>Minhas agendas</Text>
       <FlatList
         data={calendars}
@@ -39,6 +74,24 @@ export default function More() {
               <Text style={s.link}>Exportar ICS</Text>
             </TouchableOpacity>
           </View>
+        )}
+      />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={s.section}>Categorias de evento</Text>
+        <TouchableOpacity onPress={() => router.push('/category-form')}><Text style={s.link}>+ Nova</Text></TouchableOpacity>
+      </View>
+      <FlatList
+        data={cats}
+        keyExtractor={(c: any) => c.id}
+        style={{ flexGrow: 0 }}
+        renderItem={({ item }) => (
+          <TouchableOpacity style={s.card} onPress={() => router.push({ pathname: '/category-form', params: { id: item.id } })}>
+            <View style={[s.colorDot, { backgroundColor: item.color }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.title}>{item.label}</Text>
+              <Text style={s.meta}>{SCOPE_LABEL[item.scope] || item.scope}</Text>
+            </View>
+          </TouchableOpacity>
         )}
       />
       {vegetal && (

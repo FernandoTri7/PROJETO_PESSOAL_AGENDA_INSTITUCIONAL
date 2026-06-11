@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet, TextInput } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../src/api';
-import { colors, CATEGORIES } from '../../src/theme';
+import { loadPrefs, getPrefs } from '../../src/prefs';
+import { requestNotificationPermission, scheduleEventNotifications } from '../../src/notifications';
+import { colors, getCatColor, setCategories } from '../../src/theme';
 
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -11,32 +13,62 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Dias que um evento ocupa; "dia inteiro" de vários dias aparece em cada dia do intervalo.
+function eventDayKeys(ev: any): string[] {
+  const startK = dayKey(new Date(ev.start));
+  if (!ev.allDay || !ev.end) return [startK];
+  const endK = dayKey(new Date(ev.end));
+  if (endK <= startK) return [startK];
+  const keys: string[] = [];
+  const d = new Date(ev.start); d.setHours(12, 0, 0, 0);
+  while (dayKey(d) <= endK && keys.length < 366) { keys.push(dayKey(d)); d.setDate(d.getDate() + 1); }
+  return keys;
+}
+
+function evMeta(item: any): string {
+  if (!item.allDay) return `${new Date(item.start).toTimeString().slice(0, 5)} – ${new Date(item.end).toTimeString().slice(0, 5)}`;
+  const sK = dayKey(new Date(item.start)), eK = dayKey(new Date(item.end));
+  if (eK <= sK) return 'Dia inteiro';
+  const short = (iso: string) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3).toLowerCase()}`; };
+  return `Dia inteiro · ${short(item.start)}–${short(item.end)}`;
+}
+
 export default function Agenda() {
   const today = new Date();
   const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selected, setSelected] = useState(dayKey(today));
   const [events, setEvents] = useState<any[]>([]);
   const [query, setQuery] = useState('');
+  const [cals, setCals] = useState<any[]>([]);
+  const [prefs, setPrefs] = useState(getPrefs());
 
   const load = useCallback(async () => {
     const from = new Date(month.getFullYear(), month.getMonth(), 1).toISOString();
     const to = new Date(month.getFullYear(), month.getMonth() + 1, 0, 23, 59, 59).toISOString();
     const params = new URLSearchParams({ from, to });
     if (query) params.set('q', query);
+    if (!prefs.useInstitutional && cals.length) {
+      const allowed = cals.filter((c) => c.type !== 'INSTITUCIONAL').map((c) => c.id);
+      params.set('calendarIds', allowed.join(',') || '__none__');
+    }
     try {
-      setEvents(await api(`/events?${params}`));
+      const evs = await api(`/events?${params}`);
+      setEvents(evs);
+      scheduleEventNotifications(evs, prefs.notificationsEnabled);
     } catch (e) {
       console.warn(e);
     }
-  }, [month, query]);
+  }, [month, query, prefs, cals]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => {
+    api('/categories').then(setCategories).catch(() => {});
+    api('/calendars').then(setCals).catch(() => {});
+    loadPrefs().then((p) => { setPrefs(p); if (p.notificationsEnabled) requestNotificationPermission(); });
+  }, []);
 
   const byDay: Record<string, any[]> = {};
-  for (const ev of events) {
-    const k = dayKey(new Date(ev.start));
-    (byDay[k] ||= []).push(ev);
-  }
+  for (const ev of events) for (const k of eventDayKeys(ev)) (byDay[k] ||= []).push(ev);
 
   const firstWeekday = month.getDay();
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
@@ -72,7 +104,7 @@ export default function Agenda() {
               <Text style={[s.cellText, isToday && s.todayText]}>{d.getDate()}</Text>
               <View style={s.dots}>
                 {evs.slice(0, 3).map((ev, j) => (
-                  <View key={j} style={[s.dot, { backgroundColor: ev.color || CATEGORIES.find((c) => c.key === ev.category)?.color || colors.muted }]} />
+                  <View key={j} style={[s.dot, { backgroundColor: ev.color || getCatColor(ev.category) }]} />
                 ))}
               </View>
             </TouchableOpacity>
@@ -89,20 +121,17 @@ export default function Agenda() {
             style={s.eventCard}
             onPress={() => !item.occurrence && router.push({ pathname: '/event-form', params: { id: item.id } })}
           >
-            <View style={[s.eventBar, { backgroundColor: item.color || CATEGORIES.find((c) => c.key === item.category)?.color || colors.muted }]} />
+            <View style={[s.eventBar, { backgroundColor: item.color || getCatColor(item.category) }]} />
             <View style={{ flex: 1 }}>
               <Text style={s.eventTitle}>{item.title}{item.occurrence ? ' ↻' : ''}</Text>
               <Text style={s.eventTime}>
-                {item.allDay ? 'Dia inteiro' : `${new Date(item.start).toTimeString().slice(0, 5)} – ${new Date(item.end).toTimeString().slice(0, 5)}`}
+                {evMeta(item)}
                 {item.location ? ` · ${item.location}` : ''}
               </Text>
             </View>
           </TouchableOpacity>
         )}
       />
-      <TouchableOpacity style={s.fab} onPress={() => router.push({ pathname: '/event-form', params: { date: selected } })}>
-        <Text style={s.fabText}>＋</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -128,6 +157,4 @@ const s = StyleSheet.create({
   eventBar: { width: 4, borderRadius: 2 },
   eventTitle: { color: colors.text, fontWeight: '600' },
   eventTime: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 4 },
-  fabText: { color: '#fff', fontSize: 28, lineHeight: 32 },
 });

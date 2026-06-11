@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss, fmtDate } from '../../src/webCss';
@@ -174,6 +175,10 @@ export default function SessionsWeb() {
   const [calendars, setCalendars] = useState<any[]>([]);
   const [modal, setModal] = useState<any>(null);
   const [filter, setFilter] = useState('');
+
+  // FAB global: ?new=<ts> abre o modal de nova sessão
+  const { new: newParam } = useLocalSearchParams<{ new?: string }>();
+  useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
     const [all, st, cals] = await Promise.all([

@@ -52,9 +52,6 @@ export default function Birthdays() {
           </TouchableOpacity>
         )}
       />
-      <TouchableOpacity style={s.fab} onPress={() => router.push('/birthday-form')}>
-        <Text style={s.fabText}>＋</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -73,6 +70,4 @@ const s = StyleSheet.create({
   badge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 24 },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  fabText: { color: '#fff', fontSize: 28, lineHeight: 32 },
 });

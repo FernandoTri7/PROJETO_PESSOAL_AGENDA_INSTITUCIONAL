@@ -54,6 +54,22 @@ html,body,#root{height:100%;font-family:'Inter',system-ui,sans-serif;background:
 .fab{position:fixed;bottom:28px;right:28px;width:54px;height:54px;border-radius:50%;background:var(--gold);color:white;font-size:26px;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;transition:transform .15s;z-index:100}
 .fab:hover{transform:scale(1.07)}
 
+/* Speed-dial (FAB global de criação) — aparece em todos os módulos */
+.sd-backdrop{position:fixed;inset:0;background:rgba(15,23,27,.32);z-index:290;animation:sdFade .15s ease}
+.sd-wrap{position:fixed;bottom:28px;right:28px;z-index:300;display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+.sd-fab{width:56px;height:56px;border-radius:50%;background:var(--gold);color:#fff;font-size:30px;line-height:1;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;transition:transform .2s,background .15s}
+.sd-fab:hover{background:var(--gold-l)}
+.sd-fab.open{transform:rotate(135deg)}
+.sd-actions{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+.sd-item{display:flex;align-items:center;gap:10px;cursor:pointer;animation:sdRise .16s ease backwards}
+.sd-item:nth-child(1){animation-delay:.02s}.sd-item:nth-child(2){animation-delay:.05s}
+.sd-item:nth-child(3){animation-delay:.08s}.sd-item:nth-child(4){animation-delay:.11s}
+.sd-label{background:var(--white);color:var(--text);padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap}
+.sd-btn{width:46px;height:46px;border-radius:50%;background:var(--navy);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .15s}
+.sd-item:hover .sd-btn{background:var(--navy-l)}
+@keyframes sdFade{from{opacity:0}to{opacity:1}}
+@keyframes sdRise{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
+
 /* View toggle */
 .view-tabs{display:flex;gap:2px;background:#ede9e0;border-radius:8px;padding:3px}
 .view-tab{padding:6px 14px;border-radius:6px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;font-family:inherit}
@@ -186,6 +202,7 @@ html,body,#root{height:100%;font-family:'Inter',system-ui,sans-serif;background:
   .sidebar{display:none}
   .mob-tabs{display:flex}
   .content{padding-bottom:54px}
+  .sd-wrap{bottom:68px}
   .year-grid{grid-template-columns:repeat(3,1fr)}
   .cal-split{grid-template-columns:1fr}
   .form-row{grid-template-columns:1fr}
@@ -217,7 +234,7 @@ export function injectWebCss() {
 }
 
 // Categorias e helpers vêm da fonte única em theme.ts (reexportados aqui por compatibilidade dos imports do web).
-export { NAV_CATS, getCatColor, getCatLabel } from './theme';
+export { NAV_CATS, getCatColor, getCatLabel, setCategories } from './theme';
 
 export const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export const WDAYS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
