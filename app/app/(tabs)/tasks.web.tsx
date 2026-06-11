@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss, fmtDate } from '../../src/webCss';
 
@@ -15,7 +16,7 @@ function TaskModal({ task, calendars, onClose, onSaved }: any) {
   const isNew = !task?.id;
   const [form, setForm] = useState<any>({
     calendarId: calendars[0]?.id || '', title: '', description: '',
-    dueDate: '', priority: 'MEDIA', done: false,
+    priority: 'MEDIA', done: false,
     ...(task||{}),
     dueDate: task?.dueDate ? new Date(task.dueDate).toISOString().slice(0,10) : '',
   });
@@ -166,7 +167,7 @@ export default function TasksWeb() {
 
       {/* Task list */}
       {shown.length === 0
-        ? <div className="empty"><div className="empty-icon">🎉</div><div className="empty-text">Nenhuma tarefa aqui</div></div>
+        ? <div className="empty"><div className="empty-icon"><Ionicons name="checkmark-done-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhuma tarefa aqui</div></div>
         : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {shown.map(t => (
               <div key={t.id} className="ev-item" style={{ opacity: t.done ? .6 : 1 }}>

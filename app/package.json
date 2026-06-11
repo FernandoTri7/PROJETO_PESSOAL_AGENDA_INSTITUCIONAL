@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.14",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~56.0.9",
     "expo-constants": "~56.0.17",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "sharp": "^0.35.0",
     "typescript": "~6.0.3"
   },
   "scripts": {

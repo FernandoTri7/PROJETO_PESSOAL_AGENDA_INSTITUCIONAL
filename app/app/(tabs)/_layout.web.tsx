@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Slot, router, usePathname } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { loadToken, clearToken } from '../../src/api';
 import { injectWebCss } from '../../src/webCss';
+import { AgendaLockup } from '../../src/brand';
+import { brand } from '../../src/theme';
 
 const TABS = [
-  { path: '/',           icon: '📅', label: 'Agenda' },
-  { path: '/tasks',      icon: '✅', label: 'Tarefas' },
-  { path: '/birthdays',  icon: '🎂', label: 'Aniversários' },
-  { path: '/sessions',   icon: '🌿', label: 'Sessões' },
-  { path: '/more',       icon: '⚙️', label: 'Mais' },
-];
+  { path: '/',           icon: 'calendar-outline',  label: 'Agenda' },
+  { path: '/tasks',      icon: 'checkbox-outline',  label: 'Tarefas' },
+  { path: '/birthdays',  icon: 'gift-outline',      label: 'Aniversários' },
+  { path: '/sessions',   icon: 'leaf-outline',      label: 'Sessões' },
+  { path: '/more',       icon: 'settings-outline',  label: 'Mais' },
+] as const;
 
 export default function WebLayout() {
   const [ready, setReady] = useState(false);
@@ -25,7 +28,7 @@ export default function WebLayout() {
 
   if (!ready) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0F2A4A', color: 'white', fontFamily: 'DM Sans, sans-serif', fontSize: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: brand.teal, color: 'white', fontFamily: 'DM Sans, sans-serif', fontSize: 16 }}>
         Carregando...
       </div>
     );
@@ -45,7 +48,7 @@ export default function WebLayout() {
     <div className="web-shell">
       {/* Topbar */}
       <div className="topbar">
-        <span className="topbar-brand">⛩ Agenda Institucional</span>
+        <span className="topbar-brand"><AgendaLockup markSize={32} wordColor="#FFFFFF" accent={brand.orange} /></span>
         <div className="topbar-right">
           <button className="btn btn-ghost btn-sm" style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }} onClick={logout}>
             Sair
@@ -63,7 +66,7 @@ export default function WebLayout() {
               className={`nav-item${isActive(t.path) ? ' active' : ''}`}
               onClick={() => router.push(t.path as any)}
             >
-              <span className="nav-icon">{t.icon}</span>
+              <span className="nav-icon"><Ionicons name={t.icon as any} size={18} /></span>
               {t.label}
             </div>
           ))}
@@ -92,7 +95,7 @@ export default function WebLayout() {
             className={`mob-tab${isActive(t.path) ? ' active' : ''}`}
             onClick={() => router.push(t.path as any)}
           >
-            <span className="mob-tab-icon">{t.icon}</span>
+            <span className="mob-tab-icon"><Ionicons name={t.icon as any} size={20} /></span>
             {t.label}
           </button>
         ))}

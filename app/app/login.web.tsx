@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { api, setToken, loadToken } from '../src/api';
 import { injectWebCss } from '../src/webCss';
+import { AgendaMark, AgendaWordmark } from '../src/brand';
 
 export default function LoginWeb() {
   const [email, setEmail] = useState('');
@@ -30,7 +31,7 @@ export default function LoginWeb() {
   return (
     <div style={{
       minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center',
-      background:'linear-gradient(135deg, #091e36 0%, #0F2A4A 60%, #1a3a5c 100%)',
+      background:'#073C3E',
       fontFamily:"'DM Sans', sans-serif",
     }}>
       <div style={{
@@ -38,12 +39,10 @@ export default function LoginWeb() {
         boxShadow:'0 24px 64px rgba(0,0,0,.35)',
       }}>
         {/* Logo */}
-        <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ fontSize:40, marginBottom:8 }}>⛩</div>
-          <h1 style={{ fontFamily:"'Libre Baskerville', serif", fontSize:22, color:'#0F2A4A', marginBottom:4 }}>
-            Agenda Institucional
-          </h1>
-          <p style={{ color:'#6b7280', fontSize:13 }}>Acesso restrito · Entre com sua conta</p>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:28 }}>
+          <AgendaMark size={56} />
+          <div style={{ marginTop:12 }}><AgendaWordmark size={22} /></div>
+          <p style={{ color:'#52606D', fontSize:13, marginTop:10 }}>Acesso restrito · Entre com sua conta</p>
         </div>
 
         <form onSubmit={login}>
@@ -63,9 +62,9 @@ export default function LoginWeb() {
               onChange={e => setEmail(e.target.value)}
               placeholder="seu@email.com"
               autoFocus
-              style={{ width:'100%', padding:'10px 12px', border:'1px solid #ddd8ce', borderRadius:7, fontSize:14, fontFamily:'inherit', outline:'none' }}
-              onFocus={e => e.target.style.borderColor='#0F2A4A'}
-              onBlur={e => e.target.style.borderColor='#ddd8ce'}
+              style={{ width:'100%', padding:'10px 12px', border:'1px solid #DCE2E5', borderRadius:7, fontSize:14, fontFamily:'inherit', outline:'none' }}
+              onFocus={e => e.target.style.borderColor='#F5A018'}
+              onBlur={e => e.target.style.borderColor='#DCE2E5'}
             />
           </div>
 
@@ -78,9 +77,9 @@ export default function LoginWeb() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
-              style={{ width:'100%', padding:'10px 12px', border:'1px solid #ddd8ce', borderRadius:7, fontSize:14, fontFamily:'inherit', outline:'none' }}
-              onFocus={e => e.target.style.borderColor='#0F2A4A'}
-              onBlur={e => e.target.style.borderColor='#ddd8ce'}
+              style={{ width:'100%', padding:'10px 12px', border:'1px solid #DCE2E5', borderRadius:7, fontSize:14, fontFamily:'inherit', outline:'none' }}
+              onFocus={e => e.target.style.borderColor='#F5A018'}
+              onBlur={e => e.target.style.borderColor='#DCE2E5'}
             />
           </div>
 
@@ -88,12 +87,12 @@ export default function LoginWeb() {
             type="submit"
             disabled={loading}
             style={{
-              width:'100%', padding:'11px', background:'#0F2A4A', color:'white', border:'none',
+              width:'100%', padding:'11px', background:'#0F5C5E', color:'white', border:'none',
               borderRadius:8, fontSize:15, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
               opacity: loading ? .7 : 1, transition:'background .15s',
             }}
-            onMouseOver={e => !loading && ((e.target as any).style.background='#1a3a5c')}
-            onMouseOut={e => !loading && ((e.target as any).style.background='#0F2A4A')}
+            onMouseOver={e => !loading && ((e.target as any).style.background='#14706F')}
+            onMouseOut={e => !loading && ((e.target as any).style.background='#0F5C5E')}
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>

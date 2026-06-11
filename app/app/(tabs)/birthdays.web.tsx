@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss } from '../../src/webCss';
 
 const GROUP_COLORS: Record<string,string> = {
-  CRIANCA: '#f59e0b', JOVEM: '#22c55e', ADULTO: '#3b82f6',
+  CRIANCA: '#F5A018', JOVEM: '#22C55E', ADULTO: '#0F5C5E',
 };
 const GROUP_LABELS: Record<string,string> = {
   CRIANCA: 'Criança', JOVEM: 'Jovem', ADULTO: 'Adulto',
 };
 const GROUP_ICONS: Record<string,string> = {
-  CRIANCA: '🧒', JOVEM: '🧑', ADULTO: '👤',
+  CRIANCA: 'happy-outline', JOVEM: 'person-outline', ADULTO: 'person-circle-outline',
 };
 
 function BdModal({ bd, calendars, onClose, onSaved }: any) {
   const isNew = !bd?.id;
   const [form, setForm] = useState<any>({
-    calendarId: calendars[0]?.id || '', name: '', birthDate: '', phone: '', notes: '',
+    calendarId: calendars[0]?.id || '', name: '', phone: '', notes: '',
     ...(bd||{}),
     birthDate: bd?.birthDate ? new Date(bd.birthDate).toISOString().slice(0,10) : '',
   });
@@ -140,7 +141,7 @@ export default function BirthdaysWeb() {
         </div>
         {(['CRIANCA','JOVEM','ADULTO'] as const).map(g => (
           <div key={g} className="stat-card" style={{ borderLeftColor: GROUP_COLORS[g] }}>
-            <div className="stat-label">{GROUP_ICONS[g]} {GROUP_LABELS[g]}s</div>
+            <div className="stat-label"><Ionicons name={GROUP_ICONS[g] as any} size={12} /> {GROUP_LABELS[g]}s</div>
             <div className="stat-value" style={{ color: GROUP_COLORS[g] }}>{counts[g]}</div>
           </div>
         ))}
@@ -149,14 +150,14 @@ export default function BirthdaysWeb() {
       {/* Filters */}
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
         <div className="search-wrap">
-          <span>🔍</span>
+          <span><Ionicons name="search-outline" size={16} color="#52606D" /></span>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome..." />
         </div>
         <div className="view-tabs">
           <button className={`view-tab${filter==='TODOS'?' active':''}`} onClick={()=>setFilter('TODOS')}>Todos</button>
           {(['CRIANCA','JOVEM','ADULTO'] as const).map(g => (
             <button key={g} className={`view-tab${filter===g?' active':''}`} onClick={()=>setFilter(g)} style={filter===g?{color:GROUP_COLORS[g]}:{}}>
-              {GROUP_ICONS[g]} {GROUP_LABELS[g]}s
+              <Ionicons name={GROUP_ICONS[g] as any} size={12} /> {GROUP_LABELS[g]}s
             </button>
           ))}
         </div>
@@ -164,14 +165,14 @@ export default function BirthdaysWeb() {
 
       {/* Cards */}
       {shown.length === 0
-        ? <div className="empty"><div className="empty-icon">🎂</div><div className="empty-text">Nenhum aniversário encontrado</div></div>
+        ? <div className="empty"><div className="empty-icon"><Ionicons name="gift-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum aniversário encontrado</div></div>
         : <div className="bd-grid">
             {shown.map(b => {
               const color = GROUP_COLORS[b.group] || '#9ca3af';
               return (
                 <div key={b.id} className="bd-card" onClick={() => setModal(b)}>
                   <div className="bd-avatar" style={{ background: color+'22' }}>
-                    {GROUP_ICONS[b.group] || '👤'}
+                    <Ionicons name={(GROUP_ICONS[b.group] || 'person') as any} size={20} color={color} />
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="bd-name">{b.name}</div>

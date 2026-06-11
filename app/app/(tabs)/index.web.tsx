@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import {
   injectWebCss, getCatColor, getCatLabel, NAV_CATS,
@@ -226,7 +227,7 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
         </div>
         <div className="day-panel-body">
           {dayEvs.length === 0
-            ? <div className="empty"><div className="empty-icon">📭</div><div className="empty-text">Nenhum evento</div></div>
+            ? <div className="empty"><div className="empty-icon"><Ionicons name="calendar-clear-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento</div></div>
             : <div className="ev-list">
                 {dayEvs.map((ev: any) => (
                   <div key={ev.id + (ev.occurrence||'')} className="ev-item" onClick={() => !ev.occurrence && onEditEv(ev)}>
@@ -259,7 +260,7 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
 // ─── List view ──────────────────────────────────────────────────────────────
 
 function ListView({ events, onEdit }: any) {
-  if (!events.length) return <div className="empty"><div className="empty-icon">📋</div><div className="empty-text">Nenhum evento neste período</div></div>;
+  if (!events.length) return <div className="empty"><div className="empty-icon"><Ionicons name="list-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
   const grouped: Record<string, any[]> = {};
   for (const ev of events) {
     const k = dayKey(new Date(ev.start));
@@ -308,7 +309,7 @@ function CatView({ events, onEdit }: any) {
   }
   const cats = Object.entries(grouped).sort((a,b) => b[1].length - a[1].length);
   const max = cats[0]?.[1].length || 1;
-  if (!cats.length) return <div className="empty"><div className="empty-icon">🗂</div><div className="empty-text">Nenhum evento neste período</div></div>;
+  if (!cats.length) return <div className="empty"><div className="empty-icon"><Ionicons name="albums-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
   return (
     <div>
       {cats.map(([cat, evs]) => {

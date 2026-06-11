@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { api, setToken } from '../src/api';
 import { colors } from '../src/theme';
@@ -29,7 +30,10 @@ export default function Login() {
 
   return (
     <View style={s.container}>
-      <Text style={s.logo}>📅 Agenda</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <Ionicons name="calendar" size={34} color={colors.primary} />
+        <Text style={s.logo}>Agenda</Text>
+      </View>
       <Text style={s.subtitle}>Institucional e Pessoal</Text>
       {mode === 'register' && (
         <TextInput style={s.input} placeholder="Nome" placeholderTextColor={colors.muted} value={name} onChangeText={setName} />

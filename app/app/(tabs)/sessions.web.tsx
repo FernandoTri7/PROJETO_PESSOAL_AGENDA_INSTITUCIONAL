@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss, fmtDate } from '../../src/webCss';
 
@@ -30,7 +31,7 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
   const today = new Date().toISOString().slice(0,10);
   const [form, setForm] = useState<any>({
     calendarId: calendars.find((c:any) => c.type==='INSTITUCIONAL')?.id || calendars[0]?.id || '',
-    type: 'ESCALA', title: '', date: today,
+    type: 'ESCALA', title: '',
     dirigente:'', assistente:'', auxAssistente:'', som:'',
     leituraDocumentos:'', explanacao:'', vegetalDescricao:'',
     coadoLitros:'', comungadoLitros:'', retornoLitros:'',
@@ -224,7 +225,7 @@ export default function SessionsWeb() {
       {/* Filter */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="search-wrap" style={{ minWidth: 200 }}>
-          <span>🔍</span>
+          <span><Ionicons name="search-outline" size={16} color="#52606D" /></span>
           <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filtrar por tipo, dirigente..." />
         </div>
         <div className="view-tabs">
