@@ -130,17 +130,17 @@ function EventModal({ ev, calendars, onClose, onSaved }: any) {
 
           <div className="form-group">
             <label className="form-label">Local</label>
-            <input className="form-input" value={form.location} onChange={set('location')} placeholder="Endereço ou link" />
+            <input className="form-input" value={form.location || ''} onChange={set('location')} placeholder="Endereço ou link" />
           </div>
 
           <div className="form-group">
             <label className="form-label">Descrição</label>
-            <textarea className="form-textarea" value={form.description} onChange={set('description')} />
+            <textarea className="form-textarea" value={form.description || ''} onChange={set('description')} />
           </div>
 
           <div className="form-group">
             <label className="form-label">Lembretes (min antes, ex: 10,60)</label>
-            <input className="form-input" value={form.reminders} onChange={set('reminders')} placeholder="10,60" />
+            <input className="form-input" value={form.reminders || ''} onChange={set('reminders')} placeholder="10,60" />
           </div>
         </div>
         <div className="modal-footer">
@@ -456,7 +456,7 @@ export default function AgendaWeb() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="search-wrap">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><Ionicons name="search-outline" size={16} color="#52606D" /></span>
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}

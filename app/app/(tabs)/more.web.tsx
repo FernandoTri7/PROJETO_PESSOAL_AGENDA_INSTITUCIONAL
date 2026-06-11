@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { api, clearToken } from '../../src/api';
 import { injectWebCss } from '../../src/webCss';
@@ -209,7 +210,7 @@ export default function MoreWeb() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">⚙️ Configurações</h1>
+        <h1 className="page-title" style={{ display:'inline-flex', alignItems:'center', gap:8 }}><Ionicons name="settings-outline" size={20} /> Configurações</h1>
       </div>
 
       {/* Calendars section */}
@@ -233,9 +234,10 @@ export default function MoreWeb() {
                   rel="noreferrer"
                   className="btn btn-outline btn-sm"
                   title="Exportar ICS (Google Agenda)"
-                >📅 .ics</a>
+                  style={{ display:'inline-flex', alignItems:'center', gap:4 }}
+                ><Ionicons name="calendar-outline" size={14} /> .ics</a>
                 <button className="btn btn-outline btn-sm" onClick={() => setShareModal(cal)}>Compartilhar</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setCalModal(cal)}>✏️</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setCalModal(cal)} aria-label="Editar agenda"><Ionicons name="create-outline" size={16} /></button>
               </div>
             ))
         }
@@ -255,7 +257,7 @@ export default function MoreWeb() {
           ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhum lote registrado</div>
           : vegetal.lotes?.map((l: any) => (
               <div key={l.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderTop:'1px solid var(--border)', cursor:'pointer' }} onClick={() => setVegModal(l)}>
-                <span style={{ fontSize:18 }}>{l.local==='GELADEIRA'?'❄️':'🌡️'}</span>
+                <Ionicons name={l.local==='GELADEIRA'?'snow-outline':'thermometer-outline'} size={18} color={l.local==='GELADEIRA'?'#0369A1':'#D67708'} />
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:600, fontSize:13 }}>{l.nome}</div>
                   {l.origem && <div style={{ fontSize:12, color:'var(--muted)' }}>{l.origem}</div>}
