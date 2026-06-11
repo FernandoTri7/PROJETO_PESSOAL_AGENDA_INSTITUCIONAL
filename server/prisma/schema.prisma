@@ -28,6 +28,23 @@ model User {
   events      Event[]          @relation("EventCreator")
   tasks       Task[]
   sessions    SessionRecord[]  @relation("SessionCreator")
+  google      GoogleAccount?
+}
+
+// Conta Google conectada por usuário (OAuth) — usada para gerar Meet e anexar do Drive.
+model GoogleAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  email        String?
+  accessToken  String
+  refreshToken String?
+  // Expiração do access token (refrescado automaticamente quando vence).
+  expiry       DateTime?
+  scope        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ───────────────────────── Agendas (múltiplas, compartilháveis) ─────────────────────────

@@ -1,3 +1,4 @@
+import 'dotenv/config'; // carrega variáveis de server/.env ANTES dos demais módulos lerem process.env
 import express from 'express';
 import 'express-async-errors'; // encaminha erros de handlers async ao error handler global (evita crash do processo)
 import cors from 'cors';
@@ -6,6 +7,7 @@ import { calendarsRouter } from './routes/calendars.js';
 import { eventsRouter } from './routes/events.js';
 import { categoriesRouter } from './routes/categories.js';
 import { rsvpRouter } from './routes/rsvp.js';
+import { googleRouter } from './routes/google.js';
 import { tasksRouter } from './routes/tasks.js';
 import { birthdaysRouter } from './routes/birthdays.js';
 import { sessionsRouter } from './routes/sessions.js';
@@ -50,6 +52,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
 // Rota pública: resposta de convite (RSVP) via link do e-mail, sem login.
 app.use('/api/rsvp', rsvpRouter);
+// Google OAuth: o /callback é público (navegação do browser); as demais usam authMiddleware por rota.
+app.use('/api/google', googleRouter);
 app.use('/api/calendars', authMiddleware, calendarsRouter);
 app.use('/api/events', authMiddleware, eventsRouter);
 app.use('/api/categories', authMiddleware, categoriesRouter);

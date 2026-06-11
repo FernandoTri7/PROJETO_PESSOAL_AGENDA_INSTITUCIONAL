@@ -267,12 +267,32 @@ export default function MoreWeb() {
   const [vegModal, setVegModal] = useState<any>(null);
   const [catModal, setCatModal] = useState<any>(null);
   const [prefs, setPrefs] = useState(getPrefs());
+  const [gstatus, setGstatus] = useState<any>({ configured: false, connected: false, email: null });
+  const [googleMsg, setGoogleMsg] = useState('');
 
   async function load() {
     const [cals, veg, categories] = await Promise.all([api('/calendars'), api('/vegetal'), api('/categories')]).catch(()=>[[],{total:0,lotes:[]},[]]);
     setCalendars(cals); setVegetal(veg); setCats(categories);
   }
-  useEffect(() => { load(); loadPrefs().then(setPrefs); }, []);
+  useEffect(() => {
+    load();
+    loadPrefs().then(setPrefs);
+    api('/google/status').then(setGstatus).catch(()=>{});
+    if (typeof window !== 'undefined') {
+      const q = new URLSearchParams(window.location.search).get('google');
+      if (q === 'ok') setGoogleMsg('Conta Google conectada com sucesso.');
+      else if (q === 'erro') setGoogleMsg('Falha ao conectar a conta Google. Tente novamente.');
+    }
+  }, []);
+
+  async function connectGoogle() {
+    try { const r = await api('/google/auth'); if (typeof window !== 'undefined') window.location.href = r.url; }
+    catch (e: any) { alert(e.message); }
+  }
+  async function disconnectGoogle() {
+    await api('/google', { method: 'DELETE' });
+    setGstatus(await api('/google/status'));
+  }
 
   async function toggleNotifications(on: boolean) {
     if (on) { const ok = await requestNotificationPermission(); if (!ok) { alert('Permissão de notificação negada pelo navegador.'); return; } }
@@ -314,6 +334,19 @@ export default function MoreWeb() {
             <div style={{ fontSize:12, color:'var(--muted)' }}>Quando desligado, oculta a aba Sessões e os eventos das agendas institucionais.</div>
           </div>
         </label>
+        <div style={{ padding:'10px 0 2px', borderTop:'1px solid var(--border)' }}>
+          <div style={{ fontWeight:600, fontSize:14, marginBottom:4 }}>Conta Google (Drive e Meet)</div>
+          {googleMsg && <div className="form-hint" style={{ marginBottom:6 }}>{googleMsg}</div>}
+          {!gstatus.configured
+            ? <div style={{ fontSize:12, color:'var(--muted)' }}>Defina GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI no servidor (.env) para habilitar.</div>
+            : gstatus.connected
+              ? <div style={{ display:'flex', alignItems:'center', gap:10, fontSize:13 }}>
+                  <span style={{ color:'var(--muted)' }}>Conectado: {gstatus.email || 'conta Google'}</span>
+                  <button className="btn btn-outline btn-sm" onClick={disconnectGoogle}>Desconectar</button>
+                </div>
+              : <button className="btn btn-outline btn-sm" onClick={connectGoogle}>Conectar conta Google</button>
+          }
+        </div>
       </div>
 
       {/* Calendars section */}

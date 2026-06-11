@@ -112,6 +112,14 @@ export default function EventForm() {
     setAttName(''); setAttUrl('');
   }
   function removeAttachment(i: number) { setEv((e: any) => ({ ...e, attachments: e.attachments.filter((_: any, j: number) => j !== i) })); }
+  async function generateMeet() {
+    if (!id) { Alert.alert('Gerar Meet', 'Salve o evento antes de gerar o Meet.'); return; }
+    try {
+      const r = await api(`/events/${id}/meet`, { method: 'POST' });
+      setEv((e: any) => ({ ...e, videoConfLink: r.videoConfLink }));
+      Alert.alert('Meet', 'Link gerado e preenchido.');
+    } catch (e: any) { Alert.alert('Erro', `${e.message}\nConecte sua conta Google (no web, em Mais → Preferências).`); }
+  }
   async function sendInvites() {
     if (!id) return;
     try {
@@ -169,6 +177,9 @@ export default function EventForm() {
       <Text style={cf.hint}>Salve o evento antes de enviar os convites.</Text>
 
       <Field label="Videoconferência (link)" value={ev.videoConfLink} onChange={(v: string) => setEv({ ...ev, videoConfLink: v })} placeholder="https://meet.google.com/..." />
+      {!!id && (
+        <TouchableOpacity style={cf.inviteBtn} onPress={generateMeet}><Text style={cf.inviteText}>Gerar link do Meet</Text></TouchableOpacity>
+      )}
 
       <Text style={f.label}>Anexos (link)</Text>
       <View style={cf.row}>

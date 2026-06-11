@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { loadPrefs, getPrefs } from '../../src/prefs';
 import { requestNotificationPermission, scheduleEventNotifications } from '../../src/notifications';
+import { pickDriveFile } from '../../src/googlePicker';
 import {
   injectWebCss, getCatColor, getCatLabel, setCategories,
   MONTHS_PT, WDAYS_PT, WDAYS_SHORT, fmtDate, fmtTime, dayKey,
@@ -108,6 +109,20 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
         ? `Convites enviados: ${sent}/${r.results.length}.`
         : `SMTP não configurado — ${r.results.length} convite(s) simulado(s). Defina SMTP_HOST/PORT/USER/PASS no servidor.`);
     } catch (e: any) { setInviteMsg(e.message); }
+  }
+  async function generateMeet() {
+    if (isNew) { setInviteMsg('Salve o evento antes de gerar o Meet.'); return; }
+    try {
+      const r = await api(`/events/${ev.id}/meet`, { method: 'POST' });
+      setForm((f: any) => ({ ...f, videoConfLink: r.videoConfLink }));
+    } catch (e: any) { alert(e.message); }
+  }
+  async function attachFromDrive() {
+    try {
+      const t = await api('/google/token'); // 400 se a conta Google não estiver conectada
+      const file = await pickDriveFile(t.accessToken, t.apiKey);
+      if (file) setForm((f: any) => ({ ...f, attachments: [...(f.attachments || []), { name: file.name, url: file.url, provider: 'drive', mimeType: file.mimeType }] }));
+    } catch (e: any) { alert(e.message + '\nConecte sua conta Google em Mais → Preferências.'); }
   }
 
   // Categorias visíveis = as do tipo da agenda selecionada + as de escopo TODAS.
@@ -288,7 +303,7 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
                 <label className="form-label">Videoconferência</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input className="form-input" placeholder="https://meet.google.com/..." value={form.videoConfLink || ''} onChange={set('videoConfLink')} />
-                  <button type="button" className="btn btn-outline btn-sm" disabled title="Disponível ao conectar a conta Google (em breve)">Gerar Meet</button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={generateMeet} title="Cria um Meet no seu Google Calendar (requer conta Google conectada)">Gerar Meet</button>
                 </div>
               </div>
 
@@ -298,6 +313,11 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
                   <input className="form-input" placeholder="Nome" value={attName} onChange={e => setAttName(e.target.value)} style={{ flex: '0 0 30%' }} />
                   <input className="form-input" placeholder="https://..." value={attUrl} onChange={e => setAttUrl(e.target.value)} />
                   <button type="button" className="btn btn-outline btn-sm" onClick={addAttachment}>Adicionar</button>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={attachFromDrive}>
+                    <Ionicons name="logo-google" size={13} color="#52606D" /> Anexar do Drive
+                  </button>
                 </div>
                 {form.attachments?.length > 0 && (
                   <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -310,7 +330,7 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
                     ))}
                   </div>
                 )}
-                <div className="form-hint">Anexar do Google Drive será habilitado em breve.</div>
+                <div className="form-hint">Cole um link manual ou use "Anexar do Drive" (requer conta Google conectada).</div>
               </div>
             </>
           )}

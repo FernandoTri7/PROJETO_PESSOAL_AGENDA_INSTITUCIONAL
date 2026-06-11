@@ -7,6 +7,8 @@ import { eventCreateSchema, eventUpdateSchema } from '../lib/schemas.js';
 import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
 import { buildEventIcs } from '../lib/ics.js';
 import { sendMail, mailConfigured } from '../lib/mailer.js';
+import { clientForUser } from '../lib/google.js';
+import { google } from 'googleapis';
 
 export const eventsRouter = Router();
 
@@ -143,4 +145,44 @@ eventsRouter.post('/:id/invite', async (req, res) => {
     }
   }
   res.json({ configured: mailConfigured, results });
+});
+
+// Gera um link do Google Meet criando um evento no Google Calendar do usuário (conta conectada).
+// Grava o link em videoConfLink.
+eventsRouter.post('/:id/meet', async (req, res) => {
+  const ev = await prisma.event.findUnique({ where: { id: req.params.id } });
+  if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
+  if (!(await requireCalendar(req, res, ev.calendarId, true))) return;
+
+  const client = await clientForUser(req.user.id);
+  if (!client) return res.status(400).json({ error: 'Conecte sua conta Google em Mais → Preferências.' });
+
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: client });
+    const r = await calendar.events.insert({
+      calendarId: 'primary',
+      conferenceDataVersion: 1,
+      requestBody: {
+        summary: ev.title,
+        description: ev.description || undefined,
+        location: ev.location || undefined,
+        start: { dateTime: new Date(ev.start).toISOString() },
+        end: { dateTime: new Date(ev.end).toISOString() },
+        conferenceData: {
+          createRequest: {
+            requestId: `${ev.id}-${Date.now()}`,
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
+          },
+        },
+      },
+    });
+    const link = r.data.hangoutLink
+      || r.data.conferenceData?.entryPoints?.find((e) => e.entryPointType === 'video')?.uri
+      || null;
+    if (!link) return res.status(502).json({ error: 'Google não retornou link do Meet' });
+    const updated = await prisma.event.update({ where: { id: ev.id }, data: { videoConfLink: link } });
+    res.json({ videoConfLink: updated.videoConfLink });
+  } catch (e) {
+    res.status(502).json({ error: `Falha ao gerar Meet: ${e.message}` });
+  }
 });
