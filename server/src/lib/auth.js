@@ -1,6 +1,15 @@
 import jwt from 'jsonwebtoken';
 import { prisma } from './prisma.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+
+// Em produção o segredo é obrigatório: a API recusa subir sem ele (RF-01 da spec de segurança).
+// Em desenvolvimento, mantém um fallback explícito para não travar o fluxo local.
+if (isProd && !process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET não definido. Defina a variável de ambiente antes de subir em produção.');
+  process.exit(1);
+}
+
 export const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-trocar-em-producao';
 
 export function signToken(user) {
@@ -37,4 +46,15 @@ export async function requireCalendar(req, res, calendarId, write = false) {
   const ok = await calendarAccess(req.user.id, calendarId, write);
   if (!ok) res.status(403).json({ error: 'Sem permissão nesta agenda' });
   return ok;
+}
+
+// Middleware: exige que o usuário tenha um dos papéis globais informados.
+// Usado em recursos que não pertencem a uma agenda (ex.: estoque de vegetal).
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Sem permissão para esta operação' });
+    }
+    next();
+  };
 }

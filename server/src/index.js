@@ -1,4 +1,5 @@
 import express from 'express';
+import 'express-async-errors'; // encaminha erros de handlers async ao error handler global (evita crash do processo)
 import cors from 'cors';
 import { authRouter } from './routes/auth.js';
 import { calendarsRouter } from './routes/calendars.js';
@@ -9,10 +10,38 @@ import { sessionsRouter } from './routes/sessions.js';
 import { vegetalRouter } from './routes/vegetal.js';
 import { exportRouter } from './routes/export.js';
 import { authMiddleware } from './lib/auth.js';
+import { logger, httpLogger } from './lib/logger.js';
 
 const app = express();
-app.use(cors());
+
+// Confia no proxy reverso (Railway/Render/Nginx) para obter o IP real no rate limit.
+app.set('trust proxy', 1);
+
+// CORS por allowlist: defina CORS_ORIGINS como lista separada por vírgula em produção.
+// Sem a variável (desenvolvimento), libera qualquer origem para facilitar o fluxo local.
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Requisições sem origin (curl, apps nativos, server-to-server) são permitidas.
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Origem não permitida pelo CORS'));
+    },
+    // Permite que o cliente leia os headers de paginação via fetch.
+    exposedHeaders: ['X-Total-Count', 'X-Page', 'X-Page-Size'],
+  })
+);
+
 app.use(express.json({ limit: '5mb' }));
+
+// Log estruturado por requisição (req.id, status, tempo de resposta).
+app.use(httpLogger);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
@@ -25,10 +54,14 @@ app.use('/api/sessions', authMiddleware, sessionsRouter);
 app.use('/api/vegetal', authMiddleware, vegetalRouter);
 app.use('/api/export', authMiddleware, exportRouter);
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
+app.use((err, req, res, _next) => {
+  if (err?.message === 'Origem não permitida pelo CORS') {
+    return res.status(403).json({ error: err.message });
+  }
+  // Usa o logger da requisição (com req.id) quando disponível.
+  (req.log || logger).error({ err }, 'erro não tratado na requisição');
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`API rodando em http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`API rodando em http://localhost:${PORT}`));
