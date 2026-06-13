@@ -165,6 +165,80 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
   );
 }
 
+// ─── Estoque de Vegetal (lotes) ──────────────────────────────────────────────
+
+function VegetalModal({ lote, onClose, onSaved }: any) {
+  const isNew = !lote?.id;
+  const [form, setForm] = useState<any>({ nome:'', origem:'', litros:'', local:'GELADEIRA', notas:'', ...(lote||{}) });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  function set(k: string) { return (e: any) => setForm((f:any) => ({...f, [k]: e.target.value})); }
+
+  async function save() {
+    if (!form.nome.trim() || !form.litros) { setError('Nome e litros são obrigatórios'); return; }
+    setSaving(true); setError('');
+    try {
+      const body = { ...form, litros: parseFloat(String(form.litros).replace(',','.')) };
+      if (isNew) await api('/vegetal', { method: 'POST', body });
+      else       await api(`/vegetal/${lote.id}`, { method: 'PUT', body });
+      onSaved();
+    } catch(e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  async function remove() {
+    if (!confirm('Excluir este lote?')) return;
+    await api(`/vegetal/${lote.id}`, { method: 'DELETE' });
+    onSaved();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2 className="modal-title">{isNew ? 'Novo Lote' : 'Editar Lote'}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="form-error">{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Nome / Descrição *</label>
+            <input className="form-input" value={form.nome} onChange={set('nome')} placeholder="Ex.: Tucunacá Baliza" autoFocus />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Litros *</label>
+              <input className="form-input" type="number" step="0.1" value={form.litros} onChange={set('litros')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Local</label>
+              <select className="form-select" value={form.local} onChange={set('local')}>
+                <option value="GELADEIRA">Geladeira</option>
+                <option value="FORA">Fora (temperatura ambiente)</option>
+                <option value="OUTRO">Outro</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Origem</label>
+            <input className="form-input" value={form.origem||''} onChange={set('origem')} placeholder="Ex.: NRI, Itinga, Baliza..." />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Notas</label>
+            <textarea className="form-textarea" value={form.notas||''} onChange={set('notas')} rows={2} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
+          <span style={{ flex:1 }} />
+          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando...':'Salvar'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function SessionsWeb() {
@@ -175,16 +249,18 @@ export default function SessionsWeb() {
   const [calendars, setCalendars] = useState<any[]>([]);
   const [modal, setModal] = useState<any>(null);
   const [filter, setFilter] = useState('');
+  const [vegetal, setVegetal] = useState<any>({ total: 0, lotes: [] });
+  const [vegModal, setVegModal] = useState<any>(null);
 
   // FAB global: ?new=<ts> abre o modal de nova sessão
   const { new: newParam } = useLocalSearchParams<{ new?: string }>();
   useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
-    const [all, st, cals] = await Promise.all([
-      api('/sessions'), api('/sessions/stats'), api('/calendars'),
-    ]).catch(() => [[],[],[]]);
-    setSessions(all); setStats(st); setCalendars(cals);
+    const [all, st, cals, veg] = await Promise.all([
+      api('/sessions'), api('/sessions/stats'), api('/calendars'), api('/vegetal'),
+    ]).catch(() => [[],[],[],{ total: 0, lotes: [] }]);
+    setSessions(all); setStats(st); setCalendars(cals); setVegetal(veg);
   }
 
   useEffect(() => { load(); }, []);
@@ -193,7 +269,7 @@ export default function SessionsWeb() {
     !filter || s.type===filter || s.dirigente?.toLowerCase().includes(filter.toLowerCase()) || s.title?.toLowerCase().includes(filter.toLowerCase())
   );
 
-  function onSaved() { setModal(null); load(); }
+  function onSaved() { setModal(null); setVegModal(null); load(); }
 
   const totalCopos = (stats?.coposSimples||0) + (stats?.coposDuplos||0)*2 + (stats?.coposCriancas||0);
 
@@ -276,6 +352,32 @@ export default function SessionsWeb() {
         </table>
       </div>
 
+      {/* Estoque de Vegetal */}
+      <div className="section-label" style={{ marginTop: 24 }}>Estoque de Vegetal</div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:13, color:'var(--muted)' }}>Total em estoque</div>
+            <div style={{ fontSize:28, fontWeight:700, color:'#0F5C2E' }}>{(vegetal.total || 0).toFixed(1)}L</div>
+          </div>
+          <button className="btn btn-gold btn-sm" onClick={() => setVegModal({})}>+ Novo Lote</button>
+        </div>
+        {vegetal.lotes?.length === 0
+          ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhum lote registrado</div>
+          : vegetal.lotes?.map((l: any) => (
+              <div key={l.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderTop:'1px solid var(--border)', cursor:'pointer' }} onClick={() => setVegModal(l)}>
+                <Ionicons name={l.local==='GELADEIRA'?'snow-outline':'thermometer-outline'} size={18} color={l.local==='GELADEIRA'?'#0369A1':'#D67708'} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600, fontSize:13 }}>{l.nome}</div>
+                  {l.origem && <div style={{ fontSize:12, color:'var(--muted)' }}>{l.origem}</div>}
+                </div>
+                <div style={{ fontWeight:700, color:'#0F5C2E', fontSize:14 }}>{l.litros}L</div>
+                <span className="pill" style={{ background:'#0F5C2E22', color:'#0F5C2E', fontSize:10 }}>{l.local}</span>
+              </div>
+            ))
+        }
+      </div>
+
       {modal && (
         <SessionModal
           sess={modal.id ? modal : null}
@@ -284,6 +386,7 @@ export default function SessionsWeb() {
           onSaved={onSaved}
         />
       )}
+      {vegModal !== null && <VegetalModal lote={vegModal} onClose={() => setVegModal(null)} onSaved={onSaved} />}
     </div>
   );
 }

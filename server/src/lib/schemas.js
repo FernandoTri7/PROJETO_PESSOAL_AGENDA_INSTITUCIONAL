@@ -64,6 +64,7 @@ export const categoryCreateSchema = z.object({
   color: z.string().optional(),
   scope: categoryScope.optional(),
   order: numLike.optional(),
+  active: z.boolean().optional(), // ativar/desativar a categoria
 });
 export const categoryUpdateSchema = categoryCreateSchema.partial();
 

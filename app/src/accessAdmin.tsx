@@ -119,14 +119,17 @@ export function AccessAdmin() {
         {manageable.length === 0
           ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Você não administra nenhum projeto.</div>
           : <>
-            <div className="form-row" style={{ alignItems: 'flex-end', marginBottom: 8 }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Projeto</label>
-                <select className="form-select" value={selKey} onChange={(e) => setSelKey(e.target.value)}>
-                  {manageable.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-                </select>
+            {/* Seletor só aparece quando há mais de um projeto para gerenciar. */}
+            {manageable.length > 1 && (
+              <div className="form-row" style={{ alignItems: 'flex-end', marginBottom: 8 }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Projeto</label>
+                  <select className="form-select" value={selKey} onChange={(e) => setSelKey(e.target.value)}>
+                    {manageable.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
 
             {error && <div className="form-error">{error}</div>}
             {msg && <div className="form-hint" style={{ color: '#0F5C2E', marginBottom: 8 }}>{msg}</div>}

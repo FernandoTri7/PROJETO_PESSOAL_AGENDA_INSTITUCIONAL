@@ -115,78 +115,6 @@ function CalModal({ cal, onClose, onSaved }: any) {
   );
 }
 
-function VegetalModal({ lote, onClose, onSaved }: any) {
-  const isNew = !lote?.id;
-  const [form, setForm] = useState<any>({ nome:'', origem:'', litros:'', local:'GELADEIRA', notas:'', ...(lote||{}) });
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  function set(k: string) { return (e: any) => setForm((f:any) => ({...f, [k]: e.target.value})); }
-
-  async function save() {
-    if (!form.nome.trim() || !form.litros) { setError('Nome e litros são obrigatórios'); return; }
-    setSaving(true); setError('');
-    try {
-      const body = { ...form, litros: parseFloat(String(form.litros).replace(',','.')) };
-      if (isNew) await api('/vegetal', { method: 'POST', body });
-      else       await api(`/vegetal/${lote.id}`, { method: 'PUT', body });
-      onSaved();
-    } catch(e: any) { setError(e.message); }
-    finally { setSaving(false); }
-  }
-
-  async function remove() {
-    if (!confirm('Excluir este lote?')) return;
-    await api(`/vegetal/${lote.id}`, { method: 'DELETE' });
-    onSaved();
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
-      <div className="modal">
-        <div className="modal-header">
-          <h2 className="modal-title">{isNew ? 'Novo Lote' : 'Editar Lote'}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          {error && <div className="form-error">{error}</div>}
-          <div className="form-group">
-            <label className="form-label">Nome / Descrição *</label>
-            <input className="form-input" value={form.nome} onChange={set('nome')} placeholder="Ex.: Tucunacá Baliza" autoFocus />
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Litros *</label>
-              <input className="form-input" type="number" step="0.1" value={form.litros} onChange={set('litros')} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Local</label>
-              <select className="form-select" value={form.local} onChange={set('local')}>
-                <option value="GELADEIRA">Geladeira</option>
-                <option value="FORA">Fora (temperatura ambiente)</option>
-                <option value="OUTRO">Outro</option>
-              </select>
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Origem</label>
-            <input className="form-input" value={form.origem||''} onChange={set('origem')} placeholder="Ex.: NRI, Itinga, Baliza..." />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Notas</label>
-            <textarea className="form-textarea" value={form.notas||''} onChange={set('notas')} rows={2} />
-          </div>
-        </div>
-        <div className="modal-footer">
-          {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
-          <span style={{ flex:1 }} />
-          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando...':'Salvar'}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const SCOPE_LABEL: Record<string, string> = {
   PESSOAL: 'Pessoal', FAMILIAR: 'Familiar', INSTITUCIONAL: 'Institucional', TODAS: 'Todas as agendas',
 };
@@ -211,9 +139,14 @@ function CategoryModal({ cat, onClose, onSaved }: any) {
   }
 
   async function remove() {
-    if (!confirm(`Excluir a categoria "${cat.label}"? Eventos existentes mantêm o registro, mas ficam sem cor/rótulo.`)) return;
-    await api(`/categories/${cat.id}`, { method: 'DELETE' });
-    onSaved();
+    if (!confirm(`Excluir definitivamente a categoria "${cat.label}"?\n\nSó é possível se nenhum evento estiver usando. Se estiver em uso, desative-a em vez de excluir.`)) return;
+    setError('');
+    try {
+      await api(`/categories/${cat.id}`, { method: 'DELETE' });
+      onSaved();
+    } catch (e: any) {
+      setError(e.message); // ex.: "Categoria em uso em N evento(s)..."
+    }
   }
 
   return (
@@ -260,19 +193,17 @@ export default function MoreWeb() {
   useEffect(() => { injectWebCss(); }, []);
 
   const [calendars, setCalendars] = useState<any[]>([]);
-  const [vegetal, setVegetal] = useState<any>({ total: 0, lotes: [] });
   const [cats, setCats] = useState<any[]>([]);
   const [calModal, setCalModal] = useState<any>(null);
   const [shareModal, setShareModal] = useState<any>(null);
-  const [vegModal, setVegModal] = useState<any>(null);
   const [catModal, setCatModal] = useState<any>(null);
   const [prefs, setPrefs] = useState(getPrefs());
   const [gstatus, setGstatus] = useState<any>({ configured: false, connected: false, email: null });
   const [googleMsg, setGoogleMsg] = useState('');
 
   async function load() {
-    const [cals, veg, categories] = await Promise.all([api('/calendars'), api('/vegetal'), api('/categories')]).catch(()=>[[],{total:0,lotes:[]},[]]);
-    setCalendars(cals); setVegetal(veg); setCats(categories);
+    const [cals, categories] = await Promise.all([api('/calendars'), api('/categories?all=1')]).catch(()=>[[],[]]);
+    setCalendars(cals); setCats(categories);
   }
   useEffect(() => {
     load();
@@ -309,7 +240,12 @@ export default function MoreWeb() {
     router.replace('/login');
   }
 
-  function onSaved() { setCalModal(null); setShareModal(null); setVegModal(null); setCatModal(null); load(); }
+  async function toggleCategory(cat: any) {
+    await api(`/categories/${cat.id}`, { method: 'PUT', body: { active: !cat.active } });
+    load();
+  }
+
+  function onSaved() { setCalModal(null); setShareModal(null); setCatModal(null); load(); }
 
   return (
     <div className="page">
@@ -388,39 +324,16 @@ export default function MoreWeb() {
         {cats.length === 0
           ? <div className="empty" style={{ padding:16 }}><div className="empty-text">Nenhuma categoria</div></div>
           : cats.map(cat => (
-              <div key={cat.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
+              <div key={cat.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid var(--border)', opacity: cat.active ? 1 : 0.5 }}>
                 <div style={{ width:16, height:16, borderRadius:4, background:cat.color, flexShrink:0 }} />
-                <div style={{ flex:1 }}>
+                <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontWeight:600, fontSize:14 }}>{cat.label}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>{cat.used ? `Em uso em ${cat.eventCount} evento(s)` : 'Não usada em eventos'}</div>
                 </div>
                 <span className="pill" style={{ background:cat.color+'22', color:cat.color, fontSize:10 }}>{SCOPE_LABEL[cat.scope] || cat.scope}</span>
+                {!cat.active && <span className="pill" style={{ background:'#9993', color:'var(--muted)', fontSize:10 }}>inativa</span>}
+                <button className="btn btn-outline btn-sm" onClick={() => toggleCategory(cat)}>{cat.active ? 'Desativar' : 'Ativar'}</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setCatModal(cat)} aria-label="Editar categoria"><Ionicons name="create-outline" size={16} /></button>
-              </div>
-            ))
-        }
-      </div>
-
-      {/* Vegetal section */}
-      <div className="section-label">Estoque de Vegetal</div>
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-          <div>
-            <div style={{ fontSize:13, color:'var(--muted)' }}>Total em estoque</div>
-            <div style={{ fontSize:28, fontWeight:700, color:'#0F5C2E' }}>{vegetal.total?.toFixed(1)}L</div>
-          </div>
-          <button className="btn btn-gold btn-sm" onClick={() => setVegModal({})}>+ Novo Lote</button>
-        </div>
-        {vegetal.lotes?.length === 0
-          ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhum lote registrado</div>
-          : vegetal.lotes?.map((l: any) => (
-              <div key={l.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderTop:'1px solid var(--border)', cursor:'pointer' }} onClick={() => setVegModal(l)}>
-                <Ionicons name={l.local==='GELADEIRA'?'snow-outline':'thermometer-outline'} size={18} color={l.local==='GELADEIRA'?'#0369A1':'#D67708'} />
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, fontSize:13 }}>{l.nome}</div>
-                  {l.origem && <div style={{ fontSize:12, color:'var(--muted)' }}>{l.origem}</div>}
-                </div>
-                <div style={{ fontWeight:700, color:'#0F5C2E', fontSize:14 }}>{l.litros}L</div>
-                <span className="pill" style={{ background:'#0F5C2E22', color:'#0F5C2E', fontSize:10 }}>{l.local}</span>
               </div>
             ))
         }
@@ -461,7 +374,6 @@ export default function MoreWeb() {
 
       {calModal   !== null && <CalModal     cal={calModal}   onClose={()=>setCalModal(null)}   onSaved={onSaved} />}
       {shareModal !== null && <ShareModal   cal={shareModal} onClose={()=>setShareModal(null)} onSaved={onSaved} />}
-      {vegModal   !== null && <VegetalModal lote={vegModal}  onClose={()=>setVegModal(null)}   onSaved={onSaved} />}
       {catModal   !== null && <CategoryModal cat={catModal}  onClose={()=>setCatModal(null)}   onSaved={onSaved} />}
     </div>
   );

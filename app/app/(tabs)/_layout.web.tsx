@@ -2,10 +2,78 @@ import { useEffect, useState } from 'react';
 import { Slot, router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { loadToken, clearToken } from '../../src/api';
-import { loadPrefs, isAdmin } from '../../src/prefs';
+import { loadPrefs, isAdmin, getMe, getPrefs, savePrefs } from '../../src/prefs';
+import { requestNotificationPermission } from '../../src/notifications';
 import { injectWebCss } from '../../src/webCss';
 import { AgendaLockup } from '../../src/brand';
 import { brand } from '../../src/theme';
+
+const ROLE_LABEL_PT: Record<string, string> = { GESTOR: 'Gestor', ADMIN: 'Admin', MEMBRO: 'Membro', VISITANTE: 'Visitante' };
+const menuItemStyle: any = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, color: '#0F2A4A', textAlign: 'left' };
+
+// Cabeçalho do usuário (avatar + nome + papel) com menu, e o sino de notificações.
+function UserMenu({ me, onLogout }: { me: any; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [notif, setNotif] = useState(getPrefs().notificationsEnabled);
+
+  async function toggleNotif() {
+    if (!notif) {
+      const ok = await requestNotificationPermission();
+      if (!ok) { alert('Permissão de notificação negada pelo navegador.'); return; }
+    }
+    const p = await savePrefs({ notificationsEnabled: !notif });
+    setNotif(p.notificationsEnabled);
+  }
+
+  const name = me?.name || me?.email || 'Usuário';
+  const initial = String(name).trim().charAt(0).toUpperCase() || '?';
+  const role = ROLE_LABEL_PT[me?.role] || me?.role || '';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
+      <button
+        onClick={toggleNotif}
+        title={notif ? 'Notificações ativadas (clique para desativar)' : 'Ativar notificações'}
+        style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,.85)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}
+      >
+        <Ionicons name={notif ? 'notifications' : 'notifications-outline'} size={20} />
+      </button>
+
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: '#fff', padding: '4px 6px', borderRadius: 8 }}
+      >
+        <span style={{ width: 30, height: 30, borderRadius: '50%', background: '#F4C77E', color: '#5a3d00', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initial}</span>
+        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
+          {role ? <span style={{ fontSize: 11, color: 'rgba(255,255,255,.65)' }}>{role}</span> : null}
+        </span>
+        <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,.7)" />
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.22)', minWidth: 220, zIndex: 50, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid #eef0f2' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#0F2A4A' }}>{name}</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>{me?.email}</div>
+              {role ? <div style={{ marginTop: 4, fontSize: 11, color: '#0F5C5E', fontWeight: 700 }}>{role}</div> : null}
+            </div>
+            <button onClick={() => { setOpen(false); toggleNotif(); }} style={menuItemStyle}>
+              <Ionicons name={notif ? 'notifications-off-outline' : 'notifications-outline'} size={16} />
+              {notif ? 'Desativar notificações' : 'Ativar notificações'}
+            </button>
+            <button onClick={() => { setOpen(false); onLogout(); }} style={{ ...menuItemStyle, color: '#dc2626' }}>
+              <Ionicons name="log-out-outline" size={16} />
+              Sair
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const TABS = [
   { path: '/',           icon: 'calendar-outline',  label: 'Agenda' },
@@ -65,13 +133,14 @@ export default function WebLayout() {
   const [ready, setReady] = useState(false);
   const [useInstitutional, setUseInstitutional] = useState(true);
   const [admin, setAdmin] = useState(false);
+  const [me, setMe] = useState<any>(getMe());
   const pathname = usePathname();
 
   useEffect(() => {
     injectWebCss();
     loadToken().then((t) => {
       if (!t) router.replace('/login');
-      else { setReady(true); loadPrefs().then((p) => { setUseInstitutional(p.useInstitutional); setAdmin(isAdmin()); }); }
+      else { setReady(true); loadPrefs().then((p) => { setUseInstitutional(p.useInstitutional); setAdmin(isAdmin()); setMe(getMe()); }); }
     });
   }, []);
 
@@ -105,9 +174,7 @@ export default function WebLayout() {
       <div className="topbar">
         <span className="topbar-brand"><AgendaLockup markSize={32} wordColor="#FFFFFF" accent={brand.orange} /></span>
         <div className="topbar-right">
-          <button className="btn btn-ghost btn-sm" style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }} onClick={logout}>
-            Sair
-          </button>
+          <UserMenu me={me} onLogout={logout} />
         </div>
       </div>
 
