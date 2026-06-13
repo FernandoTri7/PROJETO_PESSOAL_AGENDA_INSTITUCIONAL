@@ -12,8 +12,20 @@ if (isProd && !process.env.JWT_SECRET) {
 
 export const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-trocar-em-producao';
 
+// Projeto ativo padrão. Enquanto o cliente não envia o header X-Project, tudo cai na "agenda".
+// (Identidade central — ver docs/arquitetura-identidade-central.md)
+export const DEFAULT_PROJECT_KEY = 'agenda';
+
+// Papéis que dão poder elevado DENTRO de um projeto (equivalente ao antigo ADMIN global).
+const ELEVATED_ROLES = ['GESTOR', 'ADMIN'];
+export function isElevatedRole(role) {
+  return ELEVATED_ROLES.includes(role);
+}
+
+// O JWT carrega apenas a identidade (userId). O papel é resolvido por projeto a cada request,
+// via Membership, para que revogar/rebaixar acesso valha na próxima chamada (sem esperar o token expirar).
 export function signToken(user) {
-  return jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '30d' });
 }
 
 export async function authMiddleware(req, res, next) {
@@ -25,6 +37,18 @@ export async function authMiddleware(req, res, next) {
     const user = await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.active) return res.status(401).json({ error: 'Usuário inválido' });
     req.user = user;
+
+    // Resolve o projeto ativo (header X-Project, ou "agenda" por padrão) e o vínculo do usuário nele.
+    const projectKey = (req.headers['x-project'] || DEFAULT_PROJECT_KEY).toString();
+    const membership = await prisma.membership.findFirst({
+      where: { userId: user.id, active: true, project: { key: projectKey, active: true } },
+      include: { project: true },
+    });
+    req.membership = membership; // pode ser null (usuário sem vínculo ativo neste projeto)
+    req.project = membership?.project || null;
+    // Poder elevado no projeto atual — substitui o antigo atalho `user.role === 'ADMIN'`.
+    req.isElevated = membership ? isElevatedRole(membership.role) : false;
+
     next();
   } catch {
     return res.status(401).json({ error: 'Token inválido ou expirado' });
@@ -42,19 +66,52 @@ export async function calendarAccess(userId, calendarId, write = false) {
 }
 
 export async function requireCalendar(req, res, calendarId, write = false) {
-  if (req.user.role === 'ADMIN') return true;
+  if (req.isElevated) return true;
   const ok = await calendarAccess(req.user.id, calendarId, write);
   if (!ok) res.status(403).json({ error: 'Sem permissão nesta agenda' });
   return ok;
 }
 
-// Middleware: exige que o usuário tenha um dos papéis globais informados.
-// Usado em recursos que não pertencem a uma agenda (ex.: estoque de vegetal).
+// Verifica se uma agenda é do tipo INSTITUCIONAL (edição exclusiva de administradores).
+export async function calendarIsInstitutional(calendarId) {
+  const c = await prisma.calendar.findUnique({ where: { id: calendarId }, select: { type: true } });
+  return c?.type === 'INSTITUCIONAL';
+}
+
+// Escrita com regra da agenda institucional:
+// ADMIN sempre pode; a agenda INSTITUCIONAL é exclusiva de ADMIN; as demais exigem OWNER/EDITOR.
+// Retorna true/false e já responde 403 quando nega.
+export async function requireCalendarWrite(req, res, calendarId) {
+  if (req.isElevated) return true;
+  if (await calendarIsInstitutional(calendarId)) {
+    res.status(403).json({ error: 'Apenas administradores podem alterar a agenda institucional' });
+    return false;
+  }
+  const ok = await calendarAccess(req.user.id, calendarId, true);
+  if (!ok) res.status(403).json({ error: 'Sem permissão nesta agenda' });
+  return ok;
+}
+
+// Versão silenciosa (não responde): true se o usuário pode escrever na agenda,
+// respeitando a exclusividade da institucional para papéis elevados do projeto.
+export async function canWriteCalendar(req, calendarId) {
+  if (req.isElevated) return true;
+  if (await calendarIsInstitutional(calendarId)) return false;
+  return calendarAccess(req.user.id, calendarId, true);
+}
+
+// Middleware: exige que o vínculo do usuário NO PROJETO atual tenha um dos papéis informados.
+// (Antes checava o papel global em User.role; agora usa Membership.role — identidade central.)
+// Usado em recursos do projeto que não pertencem a uma agenda específica (ex.: estoque, categorias).
 export function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.membership || !roles.includes(req.membership.role)) {
       return res.status(403).json({ error: 'Sem permissão para esta operação' });
     }
     next();
   };
 }
+
+// Alias semântico para o novo modelo. Idêntico a requireRole, mas o nome deixa claro
+// que a autorização é por vínculo de projeto.
+export const requireMembership = requireRole;

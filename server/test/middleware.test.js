@@ -42,11 +42,21 @@ test('rateLimit isola contagem por IP', () => {
   assert.equal(resB.statusCode, 200); // IP diferente não é afetado
 });
 
+// Autorização agora é por vínculo de projeto (req.membership.role), não mais pela role global.
 test('requireRole bloqueia papel não autorizado com 403', () => {
   const mw = requireRole('ADMIN', 'GESTOR');
   const res = mockRes();
   let passou = false;
-  mw({ user: { role: 'VISITANTE' } }, res, () => { passou = true; });
+  mw({ membership: { role: 'VISITANTE' } }, res, () => { passou = true; });
+  assert.equal(res.statusCode, 403);
+  assert.equal(passou, false);
+});
+
+test('requireRole bloqueia 403 quando não há vínculo no projeto', () => {
+  const mw = requireRole('ADMIN', 'GESTOR');
+  const res = mockRes();
+  let passou = false;
+  mw({ membership: null }, res, () => { passou = true; });
   assert.equal(res.statusCode, 403);
   assert.equal(passou, false);
 });
@@ -55,7 +65,7 @@ test('requireRole permite papel autorizado', () => {
   const mw = requireRole('ADMIN', 'GESTOR');
   const res = mockRes();
   let passou = false;
-  mw({ user: { role: 'GESTOR' } }, res, () => { passou = true; });
+  mw({ membership: { role: 'GESTOR' } }, res, () => { passou = true; });
   assert.equal(passou, true);
 });
 

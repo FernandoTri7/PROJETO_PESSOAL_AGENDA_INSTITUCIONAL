@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { requireCalendar } from '../lib/auth.js';
+import { requireCalendarWrite } from '../lib/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { taskCreateSchema, taskUpdateSchema } from '../lib/schemas.js';
 import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
@@ -25,7 +25,7 @@ tasksRouter.get('/', async (req, res) => {
 
 tasksRouter.post('/', validateBody(taskCreateSchema), async (req, res) => {
   const b = req.body;
-  if (!(await requireCalendar(req, res, b.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, b.calendarId))) return;
   const task = await prisma.task.create({
     data: {
       calendarId: b.calendarId,
@@ -42,7 +42,7 @@ tasksRouter.post('/', validateBody(taskCreateSchema), async (req, res) => {
 tasksRouter.put('/:id', validateBody(taskUpdateSchema), async (req, res) => {
   const existing = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Tarefa não encontrada' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   const b = req.body;
   const task = await prisma.task.update({
     where: { id: req.params.id },
@@ -60,7 +60,7 @@ tasksRouter.put('/:id', validateBody(taskUpdateSchema), async (req, res) => {
 tasksRouter.delete('/:id', async (req, res) => {
   const existing = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Tarefa não encontrada' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   await prisma.task.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });

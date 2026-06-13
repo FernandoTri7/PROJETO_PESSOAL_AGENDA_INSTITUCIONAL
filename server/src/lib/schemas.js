@@ -46,6 +46,7 @@ export const loginSchema = z.object({
 export const prefsSchema = z.object({
   notificationsEnabled: z.boolean().optional(),
   useInstitutional: z.boolean().optional(),
+  hiddenCalendarIds: z.array(z.string().min(1)).optional(),
 }).partial();
 
 // ── Agendas e membros ──
@@ -97,6 +98,8 @@ export const eventCreateSchema = z.object({
   visibility: eventVisibility.optional(),
   availability: eventAvailability.optional(),
   videoConfLink: optText,
+  // Agendas adicionais (espelho) onde o evento também aparece, além da agenda dona.
+  linkedCalendarIds: z.array(z.string().min(1)).optional(),
   guests: z.array(guestSchema).optional(),
   attachments: z.array(attachmentSchema).optional(),
 });

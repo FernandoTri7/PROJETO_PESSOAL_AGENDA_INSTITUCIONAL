@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { requireCalendar } from '../lib/auth.js';
+import { requireCalendarWrite } from '../lib/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { sessionCreateSchema, sessionUpdateSchema } from '../lib/schemas.js';
 import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
@@ -86,7 +86,7 @@ sessionsRouter.get('/stats', async (req, res) => {
 
 sessionsRouter.post('/', validateBody(sessionCreateSchema), async (req, res) => {
   const b = req.body;
-  if (!(await requireCalendar(req, res, b.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, b.calendarId))) return;
   const session = await prisma.sessionRecord.create({
     data: { calendarId: b.calendarId, creatorId: req.user.id, ...buildData(b) },
   });
@@ -96,7 +96,7 @@ sessionsRouter.post('/', validateBody(sessionCreateSchema), async (req, res) => 
 sessionsRouter.put('/:id', validateBody(sessionUpdateSchema), async (req, res) => {
   const existing = await prisma.sessionRecord.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Sessão não encontrada' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   const session = await prisma.sessionRecord.update({ where: { id: req.params.id }, data: buildData(req.body || {}) });
   res.json(session);
 });
@@ -104,7 +104,7 @@ sessionsRouter.put('/:id', validateBody(sessionUpdateSchema), async (req, res) =
 sessionsRouter.delete('/:id', async (req, res) => {
   const existing = await prisma.sessionRecord.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Sessão não encontrada' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   await prisma.sessionRecord.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });

@@ -27,6 +27,10 @@ export function expandRecurrences(events, from, to) {
           start: new Date(current),
           end: new Date(current.getTime() + durationMs),
           occurrence: true,
+          // Âncora da série (datas reais do evento mestre): permite editar a série
+          // a partir de qualquer ocorrência sem deslocar a data ao salvar.
+          masterStart: ev.start,
+          masterEnd: ev.end,
         });
       }
       current = advance(current, rule.freq, rule.interval);

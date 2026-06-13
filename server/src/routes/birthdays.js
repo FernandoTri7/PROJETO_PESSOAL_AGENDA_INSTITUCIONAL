@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { requireCalendar } from '../lib/auth.js';
+import { requireCalendarWrite } from '../lib/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { birthdayCreateSchema, birthdayUpdateSchema } from '../lib/schemas.js';
 import { parsePagination, setPaginationHeaders } from '../lib/pagination.js';
@@ -43,7 +43,7 @@ birthdaysRouter.get('/', async (req, res) => {
 
 birthdaysRouter.post('/', validateBody(birthdayCreateSchema), async (req, res) => {
   const b = req.body;
-  if (!(await requireCalendar(req, res, b.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, b.calendarId))) return;
   const created = await prisma.birthday.create({
     data: { calendarId: b.calendarId, name: b.name, birthDate: new Date(b.birthDate), phone: b.phone, notes: b.notes },
   });
@@ -53,7 +53,7 @@ birthdaysRouter.post('/', validateBody(birthdayCreateSchema), async (req, res) =
 birthdaysRouter.put('/:id', validateBody(birthdayUpdateSchema), async (req, res) => {
   const existing = await prisma.birthday.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Aniversário não encontrado' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   const b = req.body;
   const updated = await prisma.birthday.update({
     where: { id: req.params.id },
@@ -70,7 +70,7 @@ birthdaysRouter.put('/:id', validateBody(birthdayUpdateSchema), async (req, res)
 birthdaysRouter.delete('/:id', async (req, res) => {
   const existing = await prisma.birthday.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Aniversário não encontrado' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   await prisma.birthday.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });

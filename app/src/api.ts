@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// No celular (Expo Go), troque por http://SEU_IP_LOCAL:4000
-export const API_URL = Platform.OS === 'web' ? 'http://localhost:4000' : 'http://192.168.0.1:4000';
+// Porta 4100 (a 4000 é usada por outro projeto local).
+// No celular (Expo Go), troque por http://SEU_IP_LOCAL:4100
+export const API_URL = Platform.OS === 'web' ? 'http://localhost:4100' : 'http://192.168.0.1:4100';
 
 let token: string | null = null;
 
@@ -32,6 +33,17 @@ export async function api(path: string, options: { method?: string; body?: any }
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+  if (!res.ok) {
+    // Quando a API devolve issues de validação (zod), inclui os campos no texto do erro
+    // para que a mensagem seja acionável em vez de só "Dados inválidos".
+    let msg = data.error || `Erro ${res.status}`;
+    if (Array.isArray(data.issues) && data.issues.length) {
+      const detail = data.issues
+        .map((i: any) => (i.field && i.field !== '(body)' ? `${i.field}: ${i.message}` : i.message))
+        .join('; ');
+      msg = `${msg} — ${detail}`;
+    }
+    throw new Error(msg);
+  }
   return data;
 }

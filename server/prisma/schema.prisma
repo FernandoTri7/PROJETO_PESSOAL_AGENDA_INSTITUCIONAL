@@ -17,18 +17,62 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
+  // [LEGADO] Papel global. Mantido em coexistência durante a migração para
+  // identidade central — o papel real passa a viver em Membership.role (por projeto).
+  // Será removido na Fase 3. Ver docs/arquitetura-identidade-central.md
   // ADMIN | GESTOR | MEMBRO | VISITANTE
   role         String   @default("MEMBRO")
+  // FUNCIONARIO (PJ) | FAMILIAR (pessoa física)
+  kind         String   @default("FUNCIONARIO")
   active       Boolean  @default(true)
   // Preferências do usuário em JSON. Ex: {"notificationsEnabled":true,"useInstitutional":false}
   prefs        String?
   createdAt    DateTime @default(now())
 
-  memberships CalendarMember[]
-  events      Event[]          @relation("EventCreator")
-  tasks       Task[]
-  sessions    SessionRecord[]  @relation("SessionCreator")
-  google      GoogleAccount?
+  memberships        CalendarMember[]
+  projectMemberships Membership[]
+  ownedProjects      Project[]        @relation("ProjectOwner")
+  events             Event[]          @relation("EventCreator")
+  tasks              Task[]
+  sessions           SessionRecord[]  @relation("SessionCreator")
+  google             GoogleAccount?
+}
+
+// ───────────────────────── Projetos e vínculos (identidade central) ─────────────────────────
+// Base única de usuários compartilhada entre projetos (Agenda, Controle Administrativo, futuros).
+// O papel da pessoa passa a ser POR projeto (Membership.role), não mais global no User.
+// Ver docs/arquitetura-identidade-central.md
+
+model Project {
+  id          String   @id @default(cuid())
+  // Identificador estável usado no app/rotas: "agenda", "admin", ...
+  key         String   @unique
+  name        String
+  // GESTOR atual do projeto. Imutável exceto por transferência explícita ou ADMIN.
+  ownerUserId String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  owner       User?        @relation("ProjectOwner", fields: [ownerUserId], references: [id])
+  memberships Membership[]
+}
+
+// Vínculo usuário↔projeto: habilita a pessoa no projeto e define seu papel ali.
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  // GESTOR | ADMIN | MEMBRO | VISITANTE — papel NESTE projeto
+  role      String   @default("MEMBRO")
+  // Habilitado/desabilitado neste projeto, sem apagar a conta nem o histórico.
+  active    Boolean  @default(true)
+  joinedAt  DateTime @default(now())
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId, role])
 }
 
 // Conta Google conectada por usuário (OAuth) — usada para gerar Meet e anexar do Drive.
@@ -57,11 +101,13 @@ model Calendar {
   color     String   @default("#1a73e8")
   createdAt DateTime @default(now())
 
-  members   CalendarMember[]
-  events    Event[]
-  tasks     Task[]
-  birthdays Birthday[]
-  sessions  SessionRecord[]
+  members    CalendarMember[]
+  events     Event[]
+  tasks      Task[]
+  birthdays  Birthday[]
+  sessions   SessionRecord[]
+  // Eventos espelhados de outras agendas que também aparecem aqui.
+  eventLinks EventCalendar[]
 }
 
 // Categorias de evento (CRUD). A key é gravada em Event.category (string) — sem FK,
@@ -120,12 +166,28 @@ model Event {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  calendar    Calendar     @relation(fields: [calendarId], references: [id], onDelete: Cascade)
-  creator     User         @relation("EventCreator", fields: [creatorId], references: [id])
+  calendar    Calendar        @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  creator     User            @relation("EventCreator", fields: [creatorId], references: [id])
   guests      EventGuest[]
   attachments Attachment[]
+  // Agendas adicionais onde este evento aparece (espelho). A agenda dona fica em calendarId.
+  links       EventCalendar[]
 
   @@index([calendarId, start])
+}
+
+// Vínculo espelho: faz um evento aparecer também em outra agenda, sem duplicar o registro.
+// Excluir/editar o evento reflete em todas as agendas vinculadas.
+model EventCalendar {
+  id         String @id @default(cuid())
+  eventId    String
+  calendarId String
+
+  event    Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, calendarId])
+  @@index([calendarId])
 }
 
 model EventGuest {

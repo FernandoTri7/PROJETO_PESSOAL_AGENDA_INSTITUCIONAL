@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { requireCalendar } from '../lib/auth.js';
+import { requireCalendarWrite, canWriteCalendar } from '../lib/auth.js';
 import { expandRecurrences } from '../lib/recurrence.js';
 import { validateBody } from '../lib/validate.js';
 import { eventCreateSchema, eventUpdateSchema } from '../lib/schemas.js';
@@ -12,6 +12,22 @@ import { google } from 'googleapis';
 
 export const eventsRouter = Router();
 
+// Adiciona calendarIds (agenda dona + agendas espelho) ao evento e remove o join cru.
+function withCalendarIds({ links, ...ev }) {
+  return { ...ev, calendarIds: [ev.calendarId, ...(links || []).map((l) => l.calendarId)] };
+}
+
+// Filtra as agendas espelho informadas para as que o usuário pode escrever,
+// removendo a agenda dona e duplicatas.
+async function allowedLinkCalendars(req, ids, ownerId) {
+  const unique = [...new Set((ids || []).filter((id) => id && id !== ownerId))];
+  const out = [];
+  for (const id of unique) {
+    if (await canWriteCalendar(req, id)) out.push(id);
+  }
+  return out;
+}
+
 // GET /api/events?calendarIds=a,b&from=ISO&to=ISO&q=texto
 // Retorna eventos do período, com ocorrências de recorrência expandidas.
 eventsRouter.get('/', async (req, res) => {
@@ -20,21 +36,30 @@ eventsRouter.get('/', async (req, res) => {
   const myCals = await prisma.calendarMember.findMany({ where: { userId: req.user.id }, select: { calendarId: true } });
   const allowed = new Set(myCals.map((m) => m.calendarId));
   calendarIds = calendarIds.length
-    ? calendarIds.filter((id) => req.user.role === 'ADMIN' || allowed.has(id))
+    ? calendarIds.filter((id) => req.isElevated || allowed.has(id))
     : [...allowed];
 
-  const where = { calendarId: { in: calendarIds } };
-  if (q) where.OR = [{ title: { contains: q } }, { description: { contains: q } }, { location: { contains: q } }];
+  // Inclui eventos da agenda dona OU espelhados em alguma agenda visível.
+  const calFilter = {
+    OR: [
+      { calendarId: { in: calendarIds } },
+      { links: { some: { calendarId: { in: calendarIds } } } },
+    ],
+  };
+  const where = q
+    ? { AND: [calFilter, { OR: [{ title: { contains: q } }, { description: { contains: q } }, { location: { contains: q } }] }] }
+    : calFilter;
 
   const events = await prisma.event.findMany({
     where,
     orderBy: { start: 'asc' },
-    include: { guests: true, attachments: true },
+    include: { guests: true, attachments: true, links: true },
   });
+  const withCals = events.map(withCalendarIds);
   const fromD = from ? new Date(from) : null;
   const toD = to ? new Date(to) : null;
   // A paginação é aplicada sobre as ocorrências já expandidas (recorrências geram itens extras).
-  const expanded = expandRecurrences(events, fromD, toD);
+  const expanded = expandRecurrences(withCals, fromD, toD);
   const pg = parsePagination(req.query);
   setPaginationHeaders(res, { total: expanded.length, ...pg });
   res.json(pg.paginated ? expanded.slice(pg.skip, pg.skip + pg.take) : expanded);
@@ -42,7 +67,8 @@ eventsRouter.get('/', async (req, res) => {
 
 eventsRouter.post('/', validateBody(eventCreateSchema), async (req, res) => {
   const b = req.body;
-  if (!(await requireCalendar(req, res, b.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, b.calendarId))) return;
+  const linkIds = await allowedLinkCalendars(req, b.linkedCalendarIds, b.calendarId);
   const event = await prisma.event.create({
     data: {
       calendarId: b.calendarId,
@@ -64,20 +90,31 @@ eventsRouter.post('/', validateBody(eventCreateSchema), async (req, res) => {
       attachments: b.attachments?.length
         ? { create: b.attachments.map((a) => ({ name: a.name, url: a.url, provider: a.provider || 'link', mimeType: a.mimeType })) }
         : undefined,
+      links: linkIds.length ? { create: linkIds.map((calendarId) => ({ calendarId })) } : undefined,
     },
-    include: { guests: true, attachments: true },
+    include: { guests: true, attachments: true, links: true },
   });
-  res.json(event);
+  res.json(withCalendarIds(event));
 });
 
 eventsRouter.put('/:id', validateBody(eventUpdateSchema), async (req, res) => {
   const existing = await prisma.event.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Evento não encontrado' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   const b = req.body;
+  // Permite trocar a agenda dona (requer escrita na nova agenda).
+  let ownerCalId = existing.calendarId;
+  if (b.calendarId && b.calendarId !== existing.calendarId) {
+    if (!(await requireCalendarWrite(req, res, b.calendarId))) return;
+    ownerCalId = b.calendarId;
+  }
+  const linkIds = b.linkedCalendarIds !== undefined
+    ? await allowedLinkCalendars(req, b.linkedCalendarIds, ownerCalId)
+    : null;
   const event = await prisma.event.update({
     where: { id: req.params.id },
     data: {
+      calendarId: ownerCalId,
       title: b.title ?? existing.title,
       description: b.description,
       location: b.location,
@@ -96,16 +133,19 @@ eventsRouter.put('/:id', validateBody(eventUpdateSchema), async (req, res) => {
       attachments: b.attachments
         ? { deleteMany: {}, create: b.attachments.map((a) => ({ name: a.name, url: a.url, provider: a.provider || 'link', mimeType: a.mimeType })) }
         : undefined,
+      links: linkIds !== null
+        ? { deleteMany: {}, create: linkIds.map((calendarId) => ({ calendarId })) }
+        : undefined,
     },
-    include: { guests: true, attachments: true },
+    include: { guests: true, attachments: true, links: true },
   });
-  res.json(event);
+  res.json(withCalendarIds(event));
 });
 
 eventsRouter.delete('/:id', async (req, res) => {
   const existing = await prisma.event.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Evento não encontrado' });
-  if (!(await requireCalendar(req, res, existing.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, existing.calendarId))) return;
   await prisma.event.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
@@ -118,7 +158,7 @@ eventsRouter.post('/:id/invite', async (req, res) => {
     include: { guests: true, calendar: true },
   });
   if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
-  if (!(await requireCalendar(req, res, ev.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, ev.calendarId))) return;
   if (!ev.guests.length) return res.status(400).json({ error: 'Nenhum convidado neste evento' });
 
   const base = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 4000}`;
@@ -152,7 +192,7 @@ eventsRouter.post('/:id/invite', async (req, res) => {
 eventsRouter.post('/:id/meet', async (req, res) => {
   const ev = await prisma.event.findUnique({ where: { id: req.params.id } });
   if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
-  if (!(await requireCalendar(req, res, ev.calendarId, true))) return;
+  if (!(await requireCalendarWrite(req, res, ev.calendarId))) return;
 
   const client = await clientForUser(req.user.id);
   if (!client) return res.status(400).json({ error: 'Conecte sua conta Google em Mais → Preferências.' });

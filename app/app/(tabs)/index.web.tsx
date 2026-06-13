@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
-import { loadPrefs, getPrefs } from '../../src/prefs';
+import { loadPrefs, getPrefs, savePrefs, isAdmin as getIsAdmin } from '../../src/prefs';
 import { requestNotificationPermission, scheduleEventNotifications } from '../../src/notifications';
 import { pickDriveFile } from '../../src/googlePicker';
 import {
@@ -22,6 +22,12 @@ const RECURRENCES = [
 ];
 
 function todayKey() { return dayKey(new Date()); }
+
+// Evento "dia inteiro" que cobre mais de um dia → desenhado como barra contínua na grade mensal.
+function isMultiDaySpan(ev: any): boolean {
+  if (!ev.allDay || !ev.end) return false;
+  return dayKey(new Date(ev.end)) > dayKey(new Date(ev.start));
+}
 
 // Dias (keys YYYY-MM-DD) que um evento ocupa. Eventos "dia inteiro" de vários dias
 // aparecem em cada dia do intervalo; os demais ficam apenas no dia de início.
@@ -56,13 +62,14 @@ function evMeta(ev: any): string {
 
 // ─── Event Form Modal ───────────────────────────────────────────────────────
 
-function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
+function EventModal({ ev, calendars, categories, isAdmin, onClose, onSaved }: any) {
   const isNew = !ev?.id;
   const [form, setForm] = useState<any>({
     title: '', calendarId: calendars[0]?.id || '', category: 'reuniao',
     startDate: todayKey(), endDate: todayKey(), startTime: '09:00', endTime: '10:00',
     allDay: false, location: '', description: '', rrule: '', reminders: '',
     visibility: 'padrao', availability: 'OCUPADO', videoConfLink: '', guests: [], attachments: [],
+    linkedCalendarIds: [],
     ...( ev
       ? {
           ...ev,
@@ -71,19 +78,54 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
           startTime: ev.start ? fmtTime(ev.start) : '09:00',
           endTime:   ev.end   ? fmtTime(ev.end)   : '10:00',
           rrule: ev.rrule || '',
+          // Agendas espelho = todas em que o evento aparece, menos a dona.
+          linkedCalendarIds: (ev.calendarIds || []).filter((id: string) => id !== ev.calendarId),
         }
       : {} ),
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [showMore, setShowMore] = useState(false);
+  // Abre "Mais opções" automaticamente quando o evento já traz dados nessa seção.
+  const [showMore, setShowMore] = useState<boolean>(() => !!(
+    (ev?.guests?.length) || (ev?.attachments?.length) || ev?.videoConfLink ||
+    (ev?.visibility && ev.visibility !== 'padrao') || (ev?.availability && ev.availability !== 'OCUPADO') ||
+    ((ev?.calendarIds || []).filter((id: string) => id !== ev?.calendarId).length)
+  ));
   const [guestEmail, setGuestEmail] = useState('');
   const [attName, setAttName] = useState('');
   const [attUrl, setAttUrl] = useState('');
   const [inviteMsg, setInviteMsg] = useState('');
+  const [customRem, setCustomRem] = useState('');
 
   function set(k: string) { return (e: any) => setForm((f: any) => ({ ...f, [k]: e.target ? e.target.value : e })); }
   function setB(k: string) { return (e: any) => setForm((f: any) => ({ ...f, [k]: e.target.checked })); }
+
+  // ── Lembretes: guardados como minutos-antes separados por vírgula (ex.: "10,60") ──
+  const REMINDER_PRESETS = [
+    { v: 0, label: 'No horário' },
+    { v: 10, label: '10 min antes' },
+    { v: 30, label: '30 min antes' },
+    { v: 60, label: '1 h antes' },
+    { v: 1440, label: '1 dia antes' },
+  ];
+  function reminderMins(): number[] {
+    return String(form.reminders || '').split(',').map((s) => s.trim()).filter(Boolean)
+      .map(Number).filter((n) => !Number.isNaN(n));
+  }
+  function setReminderMins(mins: number[]) {
+    const uniq = Array.from(new Set(mins)).sort((a, b) => a - b);
+    setForm((f: any) => ({ ...f, reminders: uniq.join(',') }));
+  }
+  function toggleReminder(v: number) {
+    const cur = reminderMins();
+    setReminderMins(cur.includes(v) ? cur.filter((n) => n !== v) : [...cur, v]);
+  }
+  function addCustomReminder() {
+    const v = Number(customRem.trim());
+    if (!customRem.trim() || Number.isNaN(v) || v < 0) return;
+    setReminderMins([...reminderMins(), v]);
+    setCustomRem('');
+  }
 
   function addGuest() {
     const email = guestEmail.trim();
@@ -125,8 +167,15 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
     } catch (e: any) { alert(e.message + '\nConecte sua conta Google em Mais → Preferências.'); }
   }
 
-  // Categorias visíveis = as do tipo da agenda selecionada + as de escopo TODAS.
+  // Permissão: a agenda institucional é editável apenas por administradores.
   const calType = calendars.find((c: any) => c.id === form.calendarId)?.type;
+  const readOnly = !isNew && calType === 'INSTITUCIONAL' && !isAdmin;
+  // Agendas que o usuário pode escolher como dona (não-admin não cria/move para institucional).
+  const ownerCalendars = calendars.filter((c: any) => isAdmin || c.type !== 'INSTITUCIONAL' || c.id === form.calendarId);
+  // Agendas espelho disponíveis (exclui a dona e, para não-admin, a institucional).
+  const mirrorCalendars = calendars.filter((c: any) => c.id !== form.calendarId && (isAdmin || c.type !== 'INSTITUCIONAL'));
+
+  // Categorias visíveis = as do tipo da agenda selecionada + as de escopo TODAS.
   const allCats = (categories && categories.length) ? categories : [];
   let catOptions = allCats.filter((c: any) => !calType || c.scope === calType || c.scope === 'TODAS');
   // Garante que a categoria atual apareça mesmo se fora do escopo (ex.: evento antigo).
@@ -135,7 +184,21 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
   }
 
   async function save() {
-    if (!form.title.trim()) { setError('Título é obrigatório'); return; }
+    if (readOnly) return; // agenda institucional é somente leitura para não-admin
+    if (!form.title.trim()) { setError('Informe o título do evento.'); return; }
+    if (!form.calendarId) { setError('Selecione a agenda do evento.'); return; }
+    if (!form.startDate) { setError('Informe a data do evento.'); return; }
+    // Horários têm um padrão seguro para nunca montar uma data ISO inválida (ex.: "T:00").
+    const startTime = (!form.allDay && form.startTime) ? form.startTime : '09:00';
+    const endTime   = (!form.allDay && form.endTime)   ? form.endTime   : '10:00';
+    const start = form.allDay ? `${form.startDate}T00:00:00` : `${form.startDate}T${startTime}:00`;
+    const endDate = (form.allDay && form.endDate && form.endDate >= form.startDate) ? form.endDate : form.startDate;
+    const end = form.allDay ? `${endDate}T23:59:00` : `${form.startDate}T${endTime}:00`;
+    if (Number.isNaN(new Date(start).getTime()) || Number.isNaN(new Date(end).getTime())) {
+      setError('Data ou horário inválido. Verifique os campos de data/hora.'); return;
+    }
+    // Agendas adicionais onde o evento também aparece (espelho), exceto a agenda dona.
+    const linkedCalendarIds = (form.linkedCalendarIds || []).filter((id: string) => id && id !== form.calendarId);
     setSaving(true); setError('');
     try {
       const body = {
@@ -144,16 +207,20 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
         category: form.category, rrule: form.rrule || null, reminders: form.reminders || null,
         visibility: form.visibility, availability: form.availability,
         videoConfLink: form.videoConfLink || null,
+        linkedCalendarIds,
         guests: (form.guests || []).map((g: any) => ({ email: g.email, name: g.name || null })),
         attachments: (form.attachments || []).map((a: any) => ({ name: a.name, url: a.url, provider: a.provider || 'link', mimeType: a.mimeType || null })),
         allDay: form.allDay,
-        start: form.allDay ? `${form.startDate}T00:00:00` : `${form.startDate}T${form.startTime}:00`,
-        end:   form.allDay
-          ? `${(form.endDate && form.endDate >= form.startDate) ? form.endDate : form.startDate}T23:59:00`
-          : `${form.startDate}T${form.endTime}:00`,
+        start,
+        end,
       };
-      if (isNew) await api('/events', { method: 'POST', body });
-      else       await api(`/events/${ev.id}`, { method: 'PUT', body });
+      const saved = isNew
+        ? await api('/events', { method: 'POST', body })
+        : await api(`/events/${ev.id}`, { method: 'PUT', body });
+      // Ao criar um evento já com convidados, dispara os convites automaticamente.
+      if (isNew && saved?.id && (form.guests?.length)) {
+        try { await api(`/events/${saved.id}/invite`, { method: 'POST' }); } catch { /* convite é best-effort */ }
+      }
       onSaved();
     } catch(e: any) { setError(e.message); }
     finally { setSaving(false); }
@@ -169,12 +236,18 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
     <div className="modal-backdrop" onClick={(e) => { if(e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
         <div className="modal-header">
-          <h2 className="modal-title">{isNew ? 'Novo evento' : 'Editar evento'}</h2>
+          <h2 className="modal-title">{isNew ? 'Novo evento' : (readOnly ? 'Evento' : 'Editar evento')}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           {error && <div className="form-error">{error}</div>}
+          {readOnly && (
+            <div className="form-hint" style={{ marginBottom: 12, padding: '9px 12px', background: '#eef6f6', border: '1px solid #bfe0e0', borderRadius: 7, color: '#0F5C5E' }}>
+              <Ionicons name="lock-closed" size={12} color="#0F5C5E" /> Agenda institucional — somente leitura. A edição é exclusiva de administradores.
+            </div>
+          )}
 
+          <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0, minInlineSize: 'auto' }}>
           <div className="form-group">
             <label className="form-label">Título *</label>
             <input className="form-input" value={form.title} onChange={set('title')} placeholder="Ex.: Reunião mensal" autoFocus />
@@ -184,7 +257,7 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
             <div className="form-group">
               <label className="form-label">Agenda</label>
               <select className="form-select" value={form.calendarId} onChange={set('calendarId')}>
-                {calendars.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {ownerCalendars.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div className="form-group">
@@ -194,6 +267,29 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
               </select>
             </div>
           </div>
+
+          {/* Espelho de agendas: o mesmo evento aparece também nas agendas marcadas. */}
+          {mirrorCalendars.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Também aparece em</label>
+              <div className="chip-row">
+                {mirrorCalendars.map((c: any) => {
+                  const on = (form.linkedCalendarIds || []).includes(c.id);
+                  return (
+                    <span
+                      key={c.id}
+                      className={`chip${on ? ' selected' : ''}`}
+                      onClick={() => setForm((f: any) => {
+                        const cur = f.linkedCalendarIds || [];
+                        return { ...f, linkedCalendarIds: on ? cur.filter((x: string) => x !== c.id) : [...cur, c.id] };
+                      })}
+                    >{c.name}</span>
+                  );
+                })}
+              </div>
+              <div className="form-hint">É o mesmo evento espelhado: editar ou excluir reflete em todas as agendas marcadas.</div>
+            </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">
@@ -244,8 +340,25 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Lembretes (min antes, ex: 10,60)</label>
-            <input className="form-input" value={form.reminders || ''} onChange={set('reminders')} placeholder="10,60" />
+            <label className="form-label">Lembretes</label>
+            <div className="form-hint" style={{ marginTop: 0, marginBottom: 6 }}>Avisar antes do evento (uma notificação para cada opção marcada).</div>
+            <div className="chip-row">
+              {REMINDER_PRESETS.map((p) => {
+                const on = reminderMins().includes(p.v);
+                return <span key={p.v} className={`chip${on ? ' selected' : ''}`} onClick={() => toggleReminder(p.v)}>{p.label}</span>;
+              })}
+              {/* Lembretes personalizados (valores fora dos presets) aparecem como chips removíveis. */}
+              {reminderMins().filter((n) => !REMINDER_PRESETS.some((p) => p.v === n)).map((n) => (
+                <span key={n} className="chip selected" onClick={() => toggleReminder(n)}>{n} min antes ✕</span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <input className="form-input" type="number" min={0} placeholder="Outro (min antes)" value={customRem}
+                onChange={(e) => setCustomRem(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomReminder(); } }}
+                style={{ flex: '0 0 60%' }} />
+              <button type="button" className="btn btn-outline btn-sm" onClick={addCustomReminder}>Adicionar</button>
+            </div>
           </div>
 
           <div className="divider" />
@@ -292,11 +405,17 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
                 )}
                 {!isNew && form.guests?.length > 0 && (
                   <div style={{ marginTop: 8 }}>
-                    <button type="button" className="btn btn-outline btn-sm" onClick={sendInvites}>Enviar convites por e-mail</button>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={sendInvites}>Reenviar convites por e-mail</button>
                     {inviteMsg && <div className="form-hint" style={{ marginTop: 6 }}>{inviteMsg}</div>}
                   </div>
                 )}
-                <div className="form-hint">Salve o evento antes de enviar os convites aos endereços adicionados.</div>
+                {form.guests?.length > 0 && (
+                  <div className="form-hint">
+                    {isNew
+                      ? 'Os convites serão enviados automaticamente por e-mail assim que você salvar o evento.'
+                      : 'Convites já podem ser enviados. Use "Reenviar" após alterar a lista de convidados.'}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -334,14 +453,24 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
               </div>
             </>
           )}
+          </fieldset>
         </div>
         <div className="modal-footer">
-          {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
-          <span style={{ flex: 1 }} />
-          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar'}
-          </button>
+          {readOnly ? (
+            <>
+              <span style={{ flex: 1 }} />
+              <button className="btn btn-primary" onClick={onClose}>Fechar</button>
+            </>
+          ) : (
+            <>
+              {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
+              <span style={{ flex: 1 }} />
+              <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -349,6 +478,88 @@ function EventModal({ ev, calendars, categories, onClose, onSaved }: any) {
 }
 
 // ─── Monthly view ───────────────────────────────────────────────────────────
+
+// Uma semana da grade mensal. Eventos multi-dia (allDay) viram barras contínuas que
+// atravessam as colunas (lanes empilhadas); os demais aparecem como chips no dia.
+function WeekRow({ week, spans, byDaySingle, selected, today, setSelected, onNewAt, onEditEv }: any) {
+  const weekKeys: (string | null)[] = week.map((d: Date | null) => (d ? dayKey(d) : null));
+  const firstK = weekKeys.find(Boolean) as string | undefined;
+  const lastK = [...weekKeys].reverse().find(Boolean) as string | undefined;
+
+  // Segmentos de barras que intersectam esta semana, recortados às colunas válidas.
+  const segs: any[] = [];
+  if (firstK && lastK) {
+    for (const ev of spans) {
+      const startK = dayKey(new Date(ev.start));
+      const endK = dayKey(new Date(ev.end));
+      if (endK < firstK || startK > lastK) continue;
+      let cs = 0; while (cs < 7 && (weekKeys[cs] === null || (weekKeys[cs] as string) < startK)) cs++;
+      let ce = 6; while (ce >= 0 && (weekKeys[ce] === null || (weekKeys[ce] as string) > endK)) ce--;
+      if (cs > ce || cs > 6 || ce < 0) continue;
+      segs.push({ ev, cs, ce, roundL: weekKeys[cs] === startK, roundR: weekKeys[ce] === endK });
+    }
+  }
+  // Empacota em lanes (faixas) sem sobreposição horizontal.
+  segs.sort((a, b) => a.cs - b.cs || (b.ce - b.cs) - (a.ce - a.cs));
+  const lanes: any[][] = [];
+  for (const s of segs) {
+    let li = lanes.findIndex((lane) => lane.every((o: any) => s.cs > o.ce || s.ce < o.cs));
+    if (li === -1) { li = lanes.length; lanes.push([]); }
+    lanes[li].push(s); s.lane = li;
+  }
+  // Geometria das barras: ficam logo abaixo do número; os chips do dia são empurrados
+  // para baixo da faixa de barras (reserva = nº de lanes × altura).
+  const SPAN_H = 19;          // altura da barra + respiro
+  const BAND_TOP = 30;        // início da faixa, abaixo do número
+  const bandReserve = lanes.length * SPAN_H;
+  const MAX_CHIPS = 3;        // limite de chips visíveis por dia; excedente vira "+N"
+
+  return (
+    <div className="cal-week">
+      {/* Células do dia: número no topo, chips empilhados abaixo da faixa de barras */}
+      {week.map((d: Date | null, i: number) => {
+        if (!d) return <div key={i} className="cal-cell other-month" />;
+        const k = dayKey(d);
+        const evs = byDaySingle[k] || [];
+        return (
+          <div key={i} className={`cal-cell${k === selected ? ' selected' : ''}`}
+            onClick={() => setSelected(k)} onDoubleClick={() => onNewAt(k)}>
+            <span className={`day-num${k === today ? ' today-num' : ''}`}>{d.getDate()}</span>
+            <div className="cal-cell-evs" style={{ marginTop: bandReserve }}>
+              {evs.slice(0, MAX_CHIPS).map((ev: any, j: number) => (
+                <div key={j} className="day-ev" style={{ background: getCatColor(ev.category) }}
+                  onClick={(e) => { e.stopPropagation(); onEditEv(ev); }} title={ev.title}>{ev.title}</div>
+              ))}
+              {evs.length > MAX_CHIPS && <div className="day-more">+{evs.length - MAX_CHIPS} mais</div>}
+            </div>
+          </div>
+        );
+      })}
+      {/* Overlay das barras contínuas multi-dia (posicionadas por porcentagem das colunas) */}
+      <div className="cal-week-spans">
+        {segs.map((s: any, idx: number) => {
+          const insetL = s.roundL ? 2 : 0;
+          const insetR = s.roundR ? 2 : 0;
+          return (
+            <div key={'s' + idx} className="cal-span"
+              style={{
+                left: `calc(${s.cs} * 100% / 7 + ${insetL}px)`,
+                width: `calc(${s.ce - s.cs + 1} * 100% / 7 - ${insetL + insetR}px)`,
+                top: BAND_TOP + s.lane * SPAN_H,
+                background: getCatColor(s.ev.category),
+                borderTopLeftRadius: s.roundL ? 4 : 0, borderBottomLeftRadius: s.roundL ? 4 : 0,
+                borderTopRightRadius: s.roundR ? 4 : 0, borderBottomRightRadius: s.roundR ? 4 : 0,
+              }}
+              title={s.ev.title}
+              onClick={(e) => { e.stopPropagation(); onEditEv(s.ev); }}>
+              <span className="cal-span-label">{s.roundL ? s.ev.title : `↤ ${s.ev.title}`}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: any) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -361,44 +572,30 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
   while (cells.length % 7 !== 0) cells.push(null);
   const today = todayKey();
 
-  const byDay = bucketByDay(events);
-
+  const byDay = bucketByDay(events);           // painel lateral: tudo, por dia
   const dayEvs = byDay[selected] || [];
+
+  // Multi-dia → barras contínuas; demais → chips por dia.
+  const spans = events.filter(isMultiDaySpan);
+  const byDaySingle = bucketByDay(events.filter((e: any) => !isMultiDaySpan(e)));
+  const weeks: (Date | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
     <div className="cal-split">
       <div>
         {/* Calendar grid */}
-        <div className="cal-grid">
-          {WDAYS_SHORT.map((w,i) => <div key={i} className="cal-wday">{w}</div>)}
-          {cells.map((d, i) => {
-            if (!d) return <div key={i} className="cal-cell other-month" />;
-            const k = dayKey(d);
-            const evs = byDay[k] || [];
-            const isToday = k === today;
-            const isSel = k === selected;
-            return (
-              <div
-                key={i}
-                className={`cal-cell${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
-                onClick={() => setSelected(k)}
-                onDoubleClick={() => onNewAt(k)}
-              >
-                <span className="day-num">{d.getDate()}</span>
-                <div className="day-evs">
-                  {evs.slice(0,3).map((ev: any, j: number) => (
-                    <div
-                      key={j} className="day-ev"
-                      style={{ background: getCatColor(ev.category) }}
-                      onClick={(e) => { e.stopPropagation(); onEditEv(ev); }}
-                      title={ev.title}
-                    >{ev.title}</div>
-                  ))}
-                  {evs.length > 3 && <div className="day-more">+{evs.length-3}</div>}
-                </div>
-              </div>
-            );
-          })}
+        <div className="cal-month">
+          <div className="cal-grid-head">
+            {WDAYS_SHORT.map((w,i) => <div key={i} className="cal-wday">{w}</div>)}
+          </div>
+          <div className="cal-weeks">
+            {weeks.map((week, wi) => (
+              <WeekRow key={wi} week={week} spans={spans} byDaySingle={byDaySingle}
+                selected={selected} today={today}
+                setSelected={setSelected} onNewAt={onNewAt} onEditEv={onEditEv} />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -417,8 +614,8 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
           {dayEvs.length === 0
             ? <div className="empty"><div className="empty-icon"><Ionicons name="calendar-clear-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento</div></div>
             : <div className="ev-list">
-                {dayEvs.map((ev: any) => (
-                  <div key={ev.id + (ev.occurrence||'')} className="ev-item" onClick={() => !ev.occurrence && onEditEv(ev)}>
+                {dayEvs.map((ev: any, i: number) => (
+                  <div key={`${ev.id}-${i}`} className="ev-item" onClick={() => onEditEv(ev)}>
                     <div className="ev-bar" style={{ background: getCatColor(ev.category) }} />
                     <div className="ev-info">
                       <div className="ev-title">{ev.title}{ev.occurrence ? ' ↻' : ''}</div>
@@ -460,8 +657,8 @@ function ListView({ events, onEdit }: any) {
           <div key={k} style={{ marginBottom: 20 }}>
             <div className="section-label">{label}</div>
             <div className="ev-list">
-              {grouped[k].map((ev: any) => (
-                <div key={ev.id+(ev.occurrence||'')} className="ev-item" onClick={() => !ev.occurrence && onEdit(ev)}>
+              {grouped[k].map((ev: any, i: number) => (
+                <div key={`${ev.id}-${i}`} className="ev-item" onClick={() => onEdit(ev)}>
                   <div className="ev-bar" style={{ background: getCatColor(ev.category) }} />
                   <div className="ev-info">
                     <div className="ev-title">{ev.title}{ev.occurrence ? ' ↻' : ''}</div>
@@ -508,8 +705,8 @@ function CatView({ events, onEdit }: any) {
             <div className="cat-bar-wrap"><div className="cat-bar-fill" style={{ background: color, width: `${evs.length/max*100}%` }} /></div>
             {isOpen && (
               <div className="ev-list">
-                {evs.map((ev: any) => (
-                  <div key={ev.id+(ev.occurrence||'')} className="ev-item" onClick={() => !ev.occurrence && onEdit(ev)}>
+                {evs.map((ev: any, i: number) => (
+                  <div key={`${ev.id}-${i}`} className="ev-item" onClick={() => onEdit(ev)}>
                     <div className="ev-bar" style={{ background: color }} />
                     <div className="ev-info">
                       <div className="ev-title">{ev.title}</div>
@@ -528,7 +725,7 @@ function CatView({ events, onEdit }: any) {
 
 // ─── Annual view ────────────────────────────────────────────────────────────
 
-function AnnualView({ year, events, onDayClick }: any) {
+function AnnualView({ year, events, onDayClick, onMonthClick }: any) {
   const today = todayKey();
   const byDay: Record<string, number> = {};
   for (const ev of events) for (const k of eventDayKeys(ev)) byDay[k] = (byDay[k]||0)+1;
@@ -543,7 +740,7 @@ function AnnualView({ year, events, onDayClick }: any) {
         while (cells.length % 7 !== 0) cells.push(null);
         return (
           <div key={m} className="card" style={{ padding: 12 }}>
-            <div className="mini-cal-title">{MONTHS_PT[m]}</div>
+            <div className="mini-cal-title mini-cal-link" onClick={() => onMonthClick(m)} title="Abrir mês">{MONTHS_PT[m]}</div>
             <div className="mini-grid">
               {['D','S','T','Q','Q','S','S'].map((w,i) => <div key={i} className="mini-wday">{w}</div>)}
               {cells.map((d,i) => {
@@ -578,9 +775,11 @@ export default function AgendaWeb() {
   const [calendars, setCalendars] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
   const [prefs, setPrefs] = useState(getPrefs());
+  const [admin, setAdmin] = useState(getIsAdmin());
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState<any>(null); // null | 'new' | event object
   const [loading, setLoading] = useState(false);
+  const [showAgendas, setShowAgendas] = useState(false); // popover de visibilidade de agendas
 
   // FAB global: ?new=<ts> abre o modal de novo evento
   const { new: newParam } = useLocalSearchParams<{ new?: string }>();
@@ -602,10 +801,14 @@ export default function AgendaWeb() {
       }
       const params = new URLSearchParams({ from, to });
       if (query) params.set('q', query);
-      // Quando o usuário desativa a agenda institucional, restringe às demais agendas.
-      if (!prefs.useInstitutional && calendars.length) {
-        const allowed = calendars.filter((c: any) => c.type !== 'INSTITUCIONAL').map((c: any) => c.id);
-        params.set('calendarIds', allowed.join(',') || '__none__');
+      // Oculta as agendas marcadas pelo usuário. (useInstitutional legado: oculta a institucional.)
+      const hidden = new Set<string>(prefs.hiddenCalendarIds || []);
+      if (prefs.useInstitutional === false) {
+        for (const c of calendars) if (c.type === 'INSTITUCIONAL') hidden.add(c.id);
+      }
+      if (hidden.size && calendars.length) {
+        const visible = calendars.filter((c: any) => !hidden.has(c.id)).map((c: any) => c.id);
+        params.set('calendarIds', visible.join(',') || '__none__');
       }
       const evs = await api(`/events?${params}`);
       setEvents(evs);
@@ -617,7 +820,7 @@ export default function AgendaWeb() {
   useEffect(() => {
     api('/calendars').then(setCalendars).catch(()=>{});
     api('/categories').then((list) => { setCategories(list); setCats(list); }).catch(()=>{});
-    loadPrefs().then((p) => { setPrefs(p); if (p.notificationsEnabled) requestNotificationPermission(); });
+    loadPrefs().then((p) => { setPrefs(p); setAdmin(getIsAdmin()); if (p.notificationsEnabled) requestNotificationPermission(); });
   }, []);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
@@ -629,13 +832,34 @@ export default function AgendaWeb() {
   function goToday() { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelected(dayKey(today)); }
 
   function onSaved() { setModal(null); loadEvents(); }
-  function onEditEv(ev: any) { setModal(ev); }
+  // Ao editar uma ocorrência de evento recorrente, abre a série mestre com a data
+  // original (masterStart/masterEnd) para não deslocar a série ao salvar.
+  function onEditEv(ev: any) {
+    if (ev.occurrence && ev.masterStart) {
+      setModal({ ...ev, start: ev.masterStart, end: ev.masterEnd, occurrence: false });
+    } else setModal(ev);
+  }
   function onNewAt(date: string) { setModal({ _newDate: date }); }
+  // Visão anual: clicar no dia abre o mês com o dia selecionado (eventos no painel lateral).
   function onAnnualDay(k: string) {
     const [y,m] = k.split('-').map(Number);
     setMonth(new Date(y, m-1, 1));
     setSelected(k);
     setView('mensal');
+  }
+  // Visão anual: clicar no nome do mês abre a visão mensal daquele mês.
+  function onAnnualMonth(m: number) {
+    setMonth(new Date(year, m, 1));
+    setView('mensal');
+  }
+
+  // Oculta/exibe uma agenda na visualização. Usuário comum não pode ocultar a institucional.
+  async function toggleCalendarHidden(calId: string, type: string) {
+    if (!admin && type === 'INSTITUCIONAL') return;
+    const cur = new Set<string>(prefs.hiddenCalendarIds || []);
+    if (cur.has(calId)) cur.delete(calId); else cur.add(calId);
+    const next = await savePrefs({ hiddenCalendarIds: [...cur] });
+    setPrefs(next);
   }
 
   const isAnual = view === 'anual';
@@ -663,6 +887,37 @@ export default function AgendaWeb() {
               placeholder="Pesquisar eventos..."
             />
           </div>
+          {/* Visibilidade de agendas */}
+          {calendars.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowAgendas(s => !s)}>
+                <Ionicons name="layers-outline" size={14} color="#52606D" /> Agendas
+                {(prefs.hiddenCalendarIds?.length ? ` (${calendars.length - prefs.hiddenCalendarIds.length}/${calendars.length})` : '')}
+              </button>
+              {showAgendas && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowAgendas(false)} />
+                  <div className="agenda-pop">
+                    <div className="agenda-pop-title">Mostrar agendas</div>
+                    {calendars.map((c: any) => {
+                      const hidden = (prefs.hiddenCalendarIds || []).includes(c.id);
+                      const locked = !admin && c.type === 'INSTITUCIONAL';
+                      return (
+                        <label key={c.id} className={`agenda-pop-item${locked ? ' locked' : ''}`}>
+                          <input type="checkbox" checked={!hidden} disabled={locked}
+                            onChange={() => toggleCalendarHidden(c.id, c.type)} />
+                          <span className="agenda-dot" style={{ background: c.color || '#1a73e8' }} />
+                          <span style={{ flex: 1 }}>{c.name}</span>
+                          {locked && <Ionicons name="lock-closed" size={12} color="#9AA0A6" />}
+                        </label>
+                      );
+                    })}
+                    {!admin && <div className="form-hint" style={{ padding: '4px 12px 8px' }}>A agenda institucional não pode ser ocultada.</div>}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div className="view-tabs">
             {(['mensal','lista','categoria','anual'] as const).map(v => (
               <button key={v} className={`view-tab${view===v?' active':''}`} onClick={() => setView(v)}>
@@ -684,7 +939,7 @@ export default function AgendaWeb() {
       )}
       {view === 'lista' && <ListView events={events} onEdit={onEditEv} />}
       {view === 'categoria' && <CatView events={events} onEdit={onEditEv} />}
-      {view === 'anual' && <AnnualView year={year} events={events} onDayClick={onAnnualDay} />}
+      {view === 'anual' && <AnnualView year={year} events={events} onDayClick={onAnnualDay} onMonthClick={onAnnualMonth} />}
 
       {/* Modal */}
       {modal && (
@@ -692,6 +947,7 @@ export default function AgendaWeb() {
           ev={modal._newDate ? { startDate: modal._newDate } : modal}
           calendars={calendars}
           categories={cats}
+          isAdmin={admin}
           onClose={() => setModal(null)}
           onSaved={onSaved}
         />
