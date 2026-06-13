@@ -107,13 +107,13 @@ export const colors = {
 // Cores alinhadas aos tokens (sessões na família teal; aniversário/CTA no laranja).
 
 export const CATEGORIES: { key: string; label: string; color: string }[] = [
-  { key: 'REUNIAO', label: 'Reunião', color: '#1F2933' },
-  { key: 'SESSAO', label: 'Sessão', color: '#0F5C5E' },
-  { key: 'TRABALHO', label: 'Trabalho', color: '#0A6A6C' },
-  { key: 'FAMILIA', label: 'Família', color: '#22C55E' },
-  { key: 'VIAGEM', label: 'Viagem', color: '#7C3AED' },
-  { key: 'ANIVERSARIO', label: 'Aniversário', color: '#F5A018' },
-  { key: 'OUTRO', label: 'Outro', color: '#52606D' },
+  { key: 'REUNIAO', label: 'Reunião', color: '#5B6B7F' },
+  { key: 'SESSAO', label: 'Sessão', color: '#2A8C8A' },
+  { key: 'TRABALHO', label: 'Trabalho', color: '#6A8D4F' },
+  { key: 'FAMILIA', label: 'Família', color: '#3FA66F' },
+  { key: 'VIAGEM', label: 'Viagem', color: '#9B6BC2' },
+  { key: 'ANIVERSARIO', label: 'Aniversário', color: '#E89A3C' },
+  { key: 'OUTRO', label: 'Outro', color: '#7C8A99' },
 ];
 
 export const SESSION_TYPES = [
@@ -123,29 +123,30 @@ export const SESSION_TYPES = [
 
 // Fonte ÚNICA das categorias do calendário (web + nativo), alinhada aos tokens.
 // O web salva eventos com estes `key`; cores de marca usam teal/laranja do sistema.
+// Paleta suave e com hues distintos (legível com texto branco nos chips do calendário).
 export const NAV_CATS = [
-  { key: 'sessao_escala',     label: 'Sessão de Escala',    color: '#0F5C5E' },
-  { key: 'sessao_instrutiva', label: 'Sessão Instrutiva',   color: '#0A6A6C' },
-  { key: 'sessao_extra',      label: 'Sessão Extra',        color: '#13807F' },
-  { key: 'sessao_qm',         label: 'QM/CDC',              color: '#0D4D4F' },
-  { key: 'sessao_jovens',     label: 'Sessão de Jovens',    color: '#22C55E' },
-  { key: 'sessao_anual',      label: 'Sessão Anual',        color: '#073C3E' },
-  { key: 'sessao_especial',   label: 'Sessão Especial',     color: '#15706F' },
-  { key: 'reuniao',           label: 'Reunião',             color: '#1F2933' },
-  { key: 'evento_especial',   label: 'Evento Especial',     color: '#D67708' },
-  { key: 'bazar',             label: 'Bazar',               color: '#7C3AED' },
-  { key: 'mutirao',           label: 'Mutirão',             color: '#B45309' },
-  { key: 'feriado',           label: 'Feriado',             color: '#EF4444' },
-  { key: 'aniversario',       label: 'Aniversário',         color: '#F5A018' },
-  { key: 'encontro',          label: 'Encontro',            color: '#0369A1' },
-  { key: 'livre',             label: 'Livre',               color: '#52606D' },
+  { key: 'sessao_escala',     label: 'Sessão de Escala',    color: '#2A8C8A' },
+  { key: 'sessao_instrutiva', label: 'Sessão Instrutiva',   color: '#3D7EA6' },
+  { key: 'sessao_extra',      label: 'Sessão Extra',        color: '#6A8D4F' },
+  { key: 'sessao_qm',         label: 'QM/CDC',              color: '#7E6BA6' },
+  { key: 'sessao_jovens',     label: 'Sessão de Jovens',    color: '#3FA66F' },
+  { key: 'sessao_anual',      label: 'Sessão Anual',        color: '#1F6E70' },
+  { key: 'sessao_especial',   label: 'Sessão Especial',     color: '#C97B5A' },
+  { key: 'reuniao',           label: 'Reunião',             color: '#5B6B7F' },
+  { key: 'evento_especial',   label: 'Evento Especial',     color: '#D98E3D' },
+  { key: 'bazar',             label: 'Bazar',               color: '#9B6BC2' },
+  { key: 'mutirao',           label: 'Mutirão',             color: '#B57A45' },
+  { key: 'feriado',           label: 'Feriado',             color: '#D9655B' },
+  { key: 'aniversario',       label: 'Aniversário',         color: '#E89A3C' },
+  { key: 'encontro',          label: 'Encontro',            color: '#4F8FC0' },
+  { key: 'livre',             label: 'Livre',               color: '#7C8A99' },
   { key: 'outro',             label: 'Outro',               color: '#9AA0A6' },
 ];
 
 // Fallback para os enums de Event.category do backend (taxonomia do nativo).
 const ENUM_CAT_COLOR: Record<string, string> = {
-  REUNIAO: '#1F2933', SESSAO: '#0F5C5E', TRABALHO: '#0A6A6C',
-  FAMILIA: '#22C55E', VIAGEM: '#7C3AED', ANIVERSARIO: '#F5A018', OUTRO: '#52606D',
+  REUNIAO: '#5B6B7F', SESSAO: '#2A8C8A', TRABALHO: '#6A8D4F',
+  FAMILIA: '#3FA66F', VIAGEM: '#9B6BC2', ANIVERSARIO: '#E89A3C', OUTRO: '#7C8A99',
 };
 const ENUM_CAT_LABEL: Record<string, string> = {
   REUNIAO: 'Reunião', SESSAO: 'Sessão', TRABALHO: 'Trabalho',

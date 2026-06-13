@@ -161,11 +161,12 @@ html,body,#root{height:100%;font-family:'Inter',system-ui,sans-serif;background:
 .mini-cal-title{font-size:12px;font-weight:700;color:var(--navy);text-align:center;margin-bottom:6px;font-family:'DM Sans',sans-serif}
 .mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden}
 .mini-wday{background:#e8e4da;text-align:center;font-size:9px;color:var(--muted);line-height:17px;font-weight:600}
-.mini-cell{background:var(--white);text-align:center;font-size:10px;padding:2px;line-height:16px;cursor:pointer}
+.mini-cell{position:relative;background:var(--white);text-align:center;font-size:10px;padding:2px;line-height:16px;cursor:pointer}
 .mini-cell:hover{background:#f0f4ff}
 .mini-cell.has-ev{font-weight:700;color:var(--navy)}
 .mini-cell.today{background:var(--navy);color:white}
 .mini-cell.other{opacity:.4}
+.moon-dot{position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:#f5a623;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
 .mini-cal-link{cursor:pointer;border-radius:5px;transition:background .12s}
 .mini-cal-link:hover{background:#eef2ff;color:var(--navy)}
 

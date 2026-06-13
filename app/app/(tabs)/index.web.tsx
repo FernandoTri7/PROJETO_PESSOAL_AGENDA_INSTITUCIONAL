@@ -529,9 +529,15 @@ function WeekRow({ week, spans, byDaySingle, selected, today, setSelected, onNew
           <div key={i} className={`cal-cell${k === selected ? ' selected' : ''}`} style={{ position: 'relative' }}
             onClick={() => setSelected(k)} onDoubleClick={() => onNewAt(k)}>
             <span className={`day-num${k === today ? ' today-num' : ''}`}>{d.getDate()}</span>
-            {moon && <span title={`Fase da lua: ${moon.label}`} style={{ position: 'absolute', top: 3, right: 4, fontSize: 11, lineHeight: 1 }}>{moon.emoji}</span>}
+            {moon && (
+              <span title={`Fase da lua: ${moon.label}`}
+                style={{ position: 'absolute', top: 3, right: 4, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2, fontSize: 11, lineHeight: 1, maxWidth: 'calc(100% - 28px)' }}>
+                {moon.principal && <span style={{ fontSize: 9, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{moon.label}</span>}
+                <span>{moon.emoji}</span>
+              </span>
+            )}
             <div className="cal-cell-evs" style={{ marginTop: bandReserve }}>
-              {holiday && <div className="day-ev" style={{ background: '#16a34a' }} title={`Feriado nacional: ${holiday}`}>🇧🇷 {holiday}</div>}
+              {holiday && <div className="day-ev" style={{ background: getCatColor('feriado') }} title={`Feriado nacional: ${holiday}`}>🇧🇷 {holiday}</div>}
               {evs.slice(0, MAX_CHIPS).map((ev: any, j: number) => (
                 <div key={j} className="day-ev" style={{ background: getCatColor(ev.category) }}
                   onClick={(e) => { e.stopPropagation(); onEditEv(ev); }} title={ev.title}>{ev.title}</div>
@@ -580,6 +586,11 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv, sh
 
   const byDay = bucketByDay(events);           // painel lateral: tudo, por dia
   const dayEvs = byDay[selected] || [];
+  // Fase da lua do dia selecionado (nome só nas fases principais).
+  const selMoon = (showMoon && selected) ? (() => {
+    const [sy, sm, sd] = selected.split('-').map(Number);
+    return moonPhase(new Date(sy, sm - 1, sd));
+  })() : null;
 
   // Multi-dia → barras contínuas; demais → chips por dia.
   const spans = events.filter(isMultiDaySpan);
@@ -614,7 +625,10 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv, sh
               return `${d} de ${MONTHS_PT[m-1]} de ${y}`;
             })() : 'Selecione um dia'}
           </div>
-          <div className="day-panel-sub">{dayEvs.length} evento{dayEvs.length !== 1 ? 's' : ''}</div>
+          <div className="day-panel-sub">
+            {dayEvs.length} evento{dayEvs.length !== 1 ? 's' : ''}
+            {selMoon && (selMoon.principal ? ` · ${selMoon.emoji} ${selMoon.label}` : ` · ${selMoon.emoji}`)}
+          </div>
         </div>
         <div className="day-panel-body">
           {dayEvs.length === 0
@@ -650,20 +664,38 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv, sh
 
 // ─── List view ──────────────────────────────────────────────────────────────
 
-function ListView({ events, onEdit }: any) {
-  if (!events.length) return <div className="empty"><div className="empty-icon"><Ionicons name="list-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
+function ListView({ events, onEdit, showMoon, holidays, month, query }: any) {
   const grouped = bucketByDay(events);
-  const keys = Object.keys(grouped).sort();
+  const keys = new Set(Object.keys(grouped));
+  // Feriados sem eventos também aparecem (dentro do mês exibido; não durante a busca).
+  if (holidays && month && !query) {
+    const prefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+    for (const hk of Object.keys(holidays)) if (hk.startsWith(prefix)) keys.add(hk);
+  }
+  const sorted = [...keys].sort();
+  if (!sorted.length) return <div className="empty"><div className="empty-icon"><Ionicons name="list-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
   return (
     <div>
-      {keys.map(k => {
+      {sorted.map(k => {
         const [y,m,d] = k.split('-').map(Number);
         const label = `${WDAYS_PT[new Date(y,m-1,d).getDay()]}, ${d} de ${MONTHS_PT[m-1]}`;
+        const evs = grouped[k] || [];
+        const moon = showMoon ? moonPhase(new Date(y, m - 1, d)) : null;
+        const holiday = holidays ? holidays[k] : null;
         return (
           <div key={k} style={{ marginBottom: 20 }}>
-            <div className="section-label">{label}</div>
+            <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{label}</span>
+              {holiday && <span className="tag" style={{ background: getCatColor('feriado') + '22', color: getCatColor('feriado') }}>🇧🇷 {holiday}</span>}
+              {moon && (
+                <span title={`Fase da lua: ${moon.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+                  {moon.emoji}
+                  {moon.principal && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'none', letterSpacing: 0 }}>{moon.label}</span>}
+                </span>
+              )}
+            </div>
             <div className="ev-list">
-              {grouped[k].map((ev: any, i: number) => (
+              {evs.map((ev: any, i: number) => (
                 <div key={`${ev.id}-${i}`} className="ev-item" onClick={() => onEdit(ev)}>
                   <div className="ev-bar" style={{ background: getCatColor(ev.category) }} />
                   <div className="ev-info">
@@ -688,7 +720,7 @@ function ListView({ events, onEdit }: any) {
 
 // ─── Category view ──────────────────────────────────────────────────────────
 
-function CatView({ events, onEdit }: any) {
+function CatView({ events, onEdit, holidays, month, query }: any) {
   const [open, setOpen] = useState<string|null>(null);
   const grouped: Record<string, any[]> = {};
   for (const ev of events) {
@@ -696,7 +728,14 @@ function CatView({ events, onEdit }: any) {
   }
   const cats = Object.entries(grouped).sort((a,b) => b[1].length - a[1].length);
   const max = cats[0]?.[1].length || 1;
-  if (!cats.length) return <div className="empty"><div className="empty-icon"><Ionicons name="albums-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
+  // Feriados nacionais do período viram uma seção própria (não durante a busca).
+  const holidayList: [string, string][] = (holidays && month && !query)
+    ? Object.entries(holidays)
+        .filter(([k]) => k.startsWith(`${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`))
+        .sort() as [string, string][]
+    : [];
+  if (!cats.length && !holidayList.length) return <div className="empty"><div className="empty-icon"><Ionicons name="albums-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum evento neste período</div></div>;
+  const holidaysOpen = open === '__holidays__';
   return (
     <div>
       {cats.map(([cat, evs]) => {
@@ -725,13 +764,38 @@ function CatView({ events, onEdit }: any) {
           </div>
         );
       })}
+
+      {holidayList.length > 0 && (
+        <div className="cat-section">
+          <div className="cat-header" style={{ background: getCatColor('feriado') }} onClick={() => setOpen(holidaysOpen ? null : '__holidays__')}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>🇧🇷 Feriados nacionais</span>
+            <span className="cat-count">{holidayList.length} feriado{holidayList.length !== 1 ? 's' : ''} {holidaysOpen ? '▲' : '▼'}</span>
+          </div>
+          {holidaysOpen && (
+            <div className="ev-list">
+              {holidayList.map(([k, name]) => {
+                const [y, m, d] = k.split('-').map(Number);
+                return (
+                  <div key={k} className="ev-item" style={{ cursor: 'default' }}>
+                    <div className="ev-bar" style={{ background: getCatColor('feriado') }} />
+                    <div className="ev-info">
+                      <div className="ev-title">{name}</div>
+                      <div className="ev-meta">{WDAYS_PT[new Date(y, m - 1, d).getDay()]}, {d} de {MONTHS_PT[m - 1]}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Annual view ────────────────────────────────────────────────────────────
 
-function AnnualView({ year, events, onDayClick, onMonthClick }: any) {
+function AnnualView({ year, events, onDayClick, onMonthClick, showMoon, holidays }: any) {
   const today = todayKey();
   const byDay: Record<string, number> = {};
   for (const ev of events) for (const k of eventDayKeys(ev)) byDay[k] = (byDay[k]||0)+1;
@@ -752,12 +816,24 @@ function AnnualView({ year, events, onDayClick, onMonthClick }: any) {
               {cells.map((d,i) => {
                 if (!d) return <div key={i} className="mini-cell" style={{ background: '#f9f8f4' }} />;
                 const k = `${year}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const holiday = holidays ? holidays[k] : null;
+                const isFullMoon = showMoon && moonPhase(new Date(year, m, d)).idx === 4;
+                const titleParts = [
+                  byDay[k] ? `${byDay[k]} evento(s)` : '',
+                  holiday ? `Feriado: ${holiday}` : '',
+                  isFullMoon ? 'Lua cheia' : '',
+                ].filter(Boolean);
+                // Feriado tinge a célula com a cor da categoria "feriado" (exceto no dia de hoje).
+                const holidayStyle = (holiday && k !== today)
+                  ? { background: getCatColor('feriado') + '22', color: getCatColor('feriado'), fontWeight: 700 }
+                  : undefined;
                 return (
                   <div key={i}
                     className={`mini-cell${byDay[k] ? ' has-ev' : ''}${k===today ? ' today' : ''}`}
+                    style={holidayStyle}
                     onClick={() => onDayClick(k)}
-                    title={byDay[k] ? `${byDay[k]} evento(s)` : ''}
-                  >{d}</div>
+                    title={titleParts.join(' · ')}
+                  >{d}{isFullMoon && <span className="moon-dot" />}</div>
                 );
               })}
             </div>
@@ -873,6 +949,10 @@ export default function AgendaWeb() {
     ? String(year)
     : `${MONTHS_PT[month.getMonth()]} ${month.getFullYear()}`;
 
+  // Overlays calculados (lua + feriados nacionais), compartilhados por todas as visões.
+  const holidays = prefs.showHolidays ? brHolidayMap(year, dayKey) : null;
+  const showMoon = !!prefs.showMoon;
+
   return (
     <div className="page">
       {/* Header */}
@@ -939,14 +1019,14 @@ export default function AgendaWeb() {
 
       {view === 'mensal' && (
         <MonthView
-          month={month} events={events} selected={selected} showMoon={prefs.showMoon}
-          holidays={prefs.showHolidays ? brHolidayMap(year, dayKey) : null}
+          month={month} events={events} selected={selected} showMoon={showMoon}
+          holidays={holidays}
           setSelected={setSelected} onNewAt={onNewAt} onEditEv={onEditEv}
         />
       )}
-      {view === 'lista' && <ListView events={events} onEdit={onEditEv} />}
-      {view === 'categoria' && <CatView events={events} onEdit={onEditEv} />}
-      {view === 'anual' && <AnnualView year={year} events={events} onDayClick={onAnnualDay} onMonthClick={onAnnualMonth} />}
+      {view === 'lista' && <ListView events={events} onEdit={onEditEv} showMoon={showMoon} holidays={holidays} month={month} query={query} />}
+      {view === 'categoria' && <CatView events={events} onEdit={onEditEv} holidays={holidays} month={month} query={query} />}
+      {view === 'anual' && <AnnualView year={year} events={events} onDayClick={onAnnualDay} onMonthClick={onAnnualMonth} showMoon={showMoon} holidays={holidays} />}
 
       {/* Modal */}
       {modal && (
