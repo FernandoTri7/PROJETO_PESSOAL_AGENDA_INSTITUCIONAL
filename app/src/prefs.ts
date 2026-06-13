@@ -9,11 +9,13 @@ export type Prefs = {
   hiddenCalendarIds: string[];
   // Visão padrão preferida por tela (ex.: { agenda: 'mensal', birthdays: 'lista' }).
   defaultViews: Record<string, string>;
+  // Mostra a fase da lua em cada dia da visão mensal.
+  showMoon: boolean;
 };
 
 export type Me = { id: string; name: string; email: string; role: string; phone?: string | null };
 
-const DEFAULT: Prefs = { notificationsEnabled: false, useInstitutional: true, hiddenCalendarIds: [], defaultViews: {} };
+const DEFAULT: Prefs = { notificationsEnabled: false, useInstitutional: true, hiddenCalendarIds: [], defaultViews: {}, showMoon: false };
 
 let cache: Prefs = { ...DEFAULT };
 let me: Me | null = null;

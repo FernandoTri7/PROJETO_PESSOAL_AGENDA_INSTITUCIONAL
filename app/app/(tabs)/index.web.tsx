@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { loadPrefs, getPrefs, savePrefs, isAdmin as getIsAdmin, getDefaultView, setDefaultView } from '../../src/prefs';
 import { requestNotificationPermission, scheduleEventNotifications } from '../../src/notifications';
+import { moonPhase } from '../../src/moon';
 import { pickDriveFile } from '../../src/googlePicker';
 import {
   injectWebCss, getCatColor, getCatLabel, setCategories,
@@ -481,7 +482,7 @@ function EventModal({ ev, calendars, categories, isAdmin, onClose, onSaved }: an
 
 // Uma semana da grade mensal. Eventos multi-dia (allDay) viram barras contínuas que
 // atravessam as colunas (lanes empilhadas); os demais aparecem como chips no dia.
-function WeekRow({ week, spans, byDaySingle, selected, today, setSelected, onNewAt, onEditEv }: any) {
+function WeekRow({ week, spans, byDaySingle, selected, today, setSelected, onNewAt, onEditEv, showMoon }: any) {
   const weekKeys: (string | null)[] = week.map((d: Date | null) => (d ? dayKey(d) : null));
   const firstK = weekKeys.find(Boolean) as string | undefined;
   const lastK = [...weekKeys].reverse().find(Boolean) as string | undefined;
@@ -521,10 +522,12 @@ function WeekRow({ week, spans, byDaySingle, selected, today, setSelected, onNew
         if (!d) return <div key={i} className="cal-cell other-month" />;
         const k = dayKey(d);
         const evs = byDaySingle[k] || [];
+        const moon = showMoon ? moonPhase(d) : null;
         return (
-          <div key={i} className={`cal-cell${k === selected ? ' selected' : ''}`}
+          <div key={i} className={`cal-cell${k === selected ? ' selected' : ''}`} style={{ position: 'relative' }}
             onClick={() => setSelected(k)} onDoubleClick={() => onNewAt(k)}>
             <span className={`day-num${k === today ? ' today-num' : ''}`}>{d.getDate()}</span>
+            {moon && <span title={`Fase da lua: ${moon.label}`} style={{ position: 'absolute', top: 3, right: 4, fontSize: 11, lineHeight: 1 }}>{moon.emoji}</span>}
             <div className="cal-cell-evs" style={{ marginTop: bandReserve }}>
               {evs.slice(0, MAX_CHIPS).map((ev: any, j: number) => (
                 <div key={j} className="day-ev" style={{ background: getCatColor(ev.category) }}
@@ -561,7 +564,7 @@ function WeekRow({ week, spans, byDaySingle, selected, today, setSelected, onNew
   );
 }
 
-function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: any) {
+function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv, showMoon }: any) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const daysInMonth = new Date(month.getFullYear(), month.getMonth()+1, 0).getDate();
   const startWday = first.getDay();
@@ -592,7 +595,7 @@ function MonthView({ month, events, selected, setSelected, onNewAt, onEditEv }: 
           <div className="cal-weeks">
             {weeks.map((week, wi) => (
               <WeekRow key={wi} week={week} spans={spans} byDaySingle={byDaySingle}
-                selected={selected} today={today}
+                selected={selected} today={today} showMoon={showMoon}
                 setSelected={setSelected} onNewAt={onNewAt} onEditEv={onEditEv} />
             ))}
           </div>
@@ -933,7 +936,7 @@ export default function AgendaWeb() {
 
       {view === 'mensal' && (
         <MonthView
-          month={month} events={events} selected={selected}
+          month={month} events={events} selected={selected} showMoon={prefs.showMoon}
           setSelected={setSelected} onNewAt={onNewAt} onEditEv={onEditEv}
         />
       )}

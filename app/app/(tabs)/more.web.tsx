@@ -234,6 +234,9 @@ export default function MoreWeb() {
     // Recarrega para o menu lateral e os filtros de evento refletirem a mudança.
     if (typeof window !== 'undefined') window.location.reload();
   }
+  async function toggleMoon(on: boolean) {
+    setPrefs(await savePrefs({ showMoon: on }));
+  }
 
   async function logout() {
     await clearToken();
@@ -268,6 +271,13 @@ export default function MoreWeb() {
           <div>
             <div style={{ fontWeight:600, fontSize:14 }}>Usar agenda institucional</div>
             <div style={{ fontSize:12, color:'var(--muted)' }}>Quando desligado, oculta a aba Sessões e os eventos das agendas institucionais.</div>
+          </div>
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer', borderTop:'1px solid var(--border)' }}>
+          <input type="checkbox" checked={prefs.showMoon} onChange={e => toggleMoon(e.target.checked)} />
+          <div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Mostrar fase da lua 🌙</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>Exibe o ícone da fase da lua em cada dia da visão mensal da agenda.</div>
           </div>
         </label>
         <div style={{ padding:'10px 0 2px', borderTop:'1px solid var(--border)' }}>

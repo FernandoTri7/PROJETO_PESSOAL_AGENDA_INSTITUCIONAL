@@ -49,6 +49,8 @@ export const prefsSchema = z.object({
   hiddenCalendarIds: z.array(z.string().min(1)).optional(),
   // Visão padrão preferida por tela (ex.: { agenda: 'mensal', birthdays: 'lista' }).
   defaultViews: z.record(z.string(), z.string()).optional(),
+  // Mostra a fase da lua na visão mensal da agenda.
+  showMoon: z.boolean().optional(),
 }).partial();
 
 // ── Agendas e membros ──
