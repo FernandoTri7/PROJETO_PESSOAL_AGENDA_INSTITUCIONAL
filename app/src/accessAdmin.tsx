@@ -47,8 +47,9 @@ export function AccessAdmin() {
     if (mng.length && !mng.some((p) => p.key === selKey)) setSelKey(mng[0].key);
   }
 
+  // Não limpa msg/erro aqui: é chamada logo após operações (run) para recarregar a lista
+  // sem apagar a confirmação recém-exibida. A limpeza acontece na troca de projeto (efeito abaixo).
   async function loadMembers(key: string) {
-    setError(''); setMsg('');
     try {
       const data = await api(`/projects/${key}/members`);
       setOwnerUserId(data.ownerUserId);
@@ -59,7 +60,7 @@ export function AccessAdmin() {
   }
 
   useEffect(() => { loadProjects(); }, []);
-  useEffect(() => { if (selKey) loadMembers(selKey); }, [selKey]);
+  useEffect(() => { setMsg(''); setError(''); if (selKey) loadMembers(selKey); }, [selKey]);
 
   async function run(fn: () => Promise<any>, okMsg: string) {
     setLoading(true); setError(''); setMsg('');
