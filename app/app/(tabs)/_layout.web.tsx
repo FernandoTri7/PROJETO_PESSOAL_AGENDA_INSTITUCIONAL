@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Slot, router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { loadToken, clearToken } from '../../src/api';
-import { loadPrefs } from '../../src/prefs';
+import { loadPrefs, isAdmin } from '../../src/prefs';
 import { injectWebCss } from '../../src/webCss';
 import { AgendaLockup } from '../../src/brand';
 import { brand } from '../../src/theme';
@@ -14,6 +14,9 @@ const TABS = [
   { path: '/sessions',   icon: 'leaf-outline',      label: 'Sessões' },
   { path: '/more',       icon: 'settings-outline',  label: 'Mais' },
 ] as const;
+
+// Item só para GESTOR/ADMIN — gestão de usuários e acessos (identidade central).
+const ADMIN_TAB = { path: '/acessos', icon: 'shield-checkmark-outline', label: 'Usuários e acessos' } as const;
 
 // Ações de "criar" do sistema — para um novo cadastro, adicione um item aqui.
 // Cada ação navega para a rota com ?new=<ts>; a tela abre seu modal ao detectar o param.
@@ -61,18 +64,21 @@ function WebSpeedDial({ actions }: { actions: readonly { label: string; icon: st
 export default function WebLayout() {
   const [ready, setReady] = useState(false);
   const [useInstitutional, setUseInstitutional] = useState(true);
+  const [admin, setAdmin] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
     injectWebCss();
     loadToken().then((t) => {
       if (!t) router.replace('/login');
-      else { setReady(true); loadPrefs().then((p) => setUseInstitutional(p.useInstitutional)); }
+      else { setReady(true); loadPrefs().then((p) => { setUseInstitutional(p.useInstitutional); setAdmin(isAdmin()); }); }
     });
   }, []);
 
   // Quando o institucional está desligado, a aba e a ação de Sessões somem.
-  const tabs = TABS.filter((t) => useInstitutional || t.path !== '/sessions');
+  const baseTabs = TABS.filter((t) => useInstitutional || t.path !== '/sessions');
+  // Insere "Usuários e acessos" antes de "Mais", só para gestor/admin.
+  const tabs = admin ? [...baseTabs.slice(0, -1), ADMIN_TAB, baseTabs[baseTabs.length - 1]] : baseTabs;
   const createActions = CREATE_ACTIONS.filter((a) => useInstitutional || a.route !== '/sessions');
 
   if (!ready) {
