@@ -237,6 +237,9 @@ export default function MoreWeb() {
   async function toggleMoon(on: boolean) {
     setPrefs(await savePrefs({ showMoon: on }));
   }
+  async function toggleHolidays(on: boolean) {
+    setPrefs(await savePrefs({ showHolidays: on }));
+  }
 
   async function logout() {
     await clearToken();
@@ -278,6 +281,13 @@ export default function MoreWeb() {
           <div>
             <div style={{ fontWeight:600, fontSize:14 }}>Mostrar fase da lua 🌙</div>
             <div style={{ fontSize:12, color:'var(--muted)' }}>Exibe o ícone da fase da lua em cada dia da visão mensal da agenda.</div>
+          </div>
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer', borderTop:'1px solid var(--border)' }}>
+          <input type="checkbox" checked={prefs.showHolidays} onChange={e => toggleHolidays(e.target.checked)} />
+          <div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Mostrar feriados nacionais 🇧🇷</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>Exibe os feriados nacionais do Brasil na visão mensal da agenda.</div>
           </div>
         </label>
         <div style={{ padding:'10px 0 2px', borderTop:'1px solid var(--border)' }}>

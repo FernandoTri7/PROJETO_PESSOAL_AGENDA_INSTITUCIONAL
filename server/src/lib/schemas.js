@@ -51,6 +51,8 @@ export const prefsSchema = z.object({
   defaultViews: z.record(z.string(), z.string()).optional(),
   // Mostra a fase da lua na visão mensal da agenda.
   showMoon: z.boolean().optional(),
+  // Mostra os feriados nacionais na agenda.
+  showHolidays: z.boolean().optional(),
 }).partial();
 
 // ── Agendas e membros ──
