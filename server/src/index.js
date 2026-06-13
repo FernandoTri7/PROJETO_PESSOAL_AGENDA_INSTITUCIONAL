@@ -3,6 +3,7 @@ import express from 'express';
 import 'express-async-errors'; // encaminha erros de handlers async ao error handler global (evita crash do processo)
 import cors from 'cors';
 import { authRouter } from './routes/auth.js';
+import { projectsRouter } from './routes/projects.js';
 import { calendarsRouter } from './routes/calendars.js';
 import { eventsRouter } from './routes/events.js';
 import { categoriesRouter } from './routes/categories.js';
@@ -54,6 +55,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/rsvp', rsvpRouter);
 // Google OAuth: o /callback é público (navegação do browser); as demais usam authMiddleware por rota.
 app.use('/api/google', googleRouter);
+app.use('/api/projects', authMiddleware, projectsRouter);
 app.use('/api/calendars', authMiddleware, calendarsRouter);
 app.use('/api/events', authMiddleware, eventsRouter);
 app.use('/api/categories', authMiddleware, categoriesRouter);
@@ -66,6 +68,10 @@ app.use('/api/export', authMiddleware, exportRouter);
 app.use((err, req, res, _next) => {
   if (err?.message === 'Origem não permitida pelo CORS') {
     return res.status(403).json({ error: err.message });
+  }
+  // Erros de domínio (regras da identidade central) carregam o status HTTP adequado.
+  if (err?.status && err.status < 500) {
+    return res.status(err.status).json({ error: err.message });
   }
   // Usa o logger da requisição (com req.id) quando disponível.
   (req.log || logger).error({ err }, 'erro não tratado na requisição');

@@ -19,7 +19,8 @@ let loaded = false;
 
 export function getPrefs(): Prefs { return cache; }
 export function getMe(): Me | null { return me; }
-export function isAdmin(): boolean { return me?.role === 'ADMIN'; }
+// "Elevado" no projeto atual = GESTOR ou ADMIN (espelha req.isElevated do backend).
+export function isAdmin(): boolean { return me?.role === 'GESTOR' || me?.role === 'ADMIN'; }
 export function prefsLoaded(): boolean { return loaded; }
 
 export async function loadPrefs(): Promise<Prefs> {

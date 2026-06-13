@@ -36,8 +36,6 @@ authRouter.post('/register', loginLimiter, validateBody(registerSchema), async (
       name,
       email,
       passwordHash: await bcrypt.hash(password, 10),
-      // [LEGADO] role global em coexistência; o papel real vai para Membership (abaixo). Removido na Fase 3.
-      role: isFirst ? 'ADMIN' : 'MEMBRO',
     },
   });
 
@@ -116,8 +114,8 @@ authRouter.put('/me/prefs', authMiddleware, validateBody(prefsSchema), async (re
   res.json({ ...publicUser(user), prefs: parsePrefs(user.prefs) });
 });
 
-// `role` retornado ao cliente é o papel NO PROJETO atual (Membership.role); na ausência de
-// vínculo, cai na role legada do usuário. Assim a UI reflete a autorização real do backend.
+// `role` retornado ao cliente é o papel NO PROJETO atual (Membership.role). Sem vínculo
+// ativo no projeto, o usuário não tem papel ali (null). Assim a UI reflete a autorização real.
 function publicUser(u, projectRole) {
-  return { id: u.id, name: u.name, email: u.email, role: projectRole || u.role };
+  return { id: u.id, name: u.name, email: u.email, kind: u.kind, role: projectRole ?? null };
 }

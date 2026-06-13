@@ -14,8 +14,19 @@ async function main() {
       name: 'Daniel',
       email: 'daniel@tri7.com.br',
       passwordHash: await bcrypt.hash('123456', 10),
-      role: 'ADMIN',
     },
+  });
+
+  // Identidade central: projeto "agenda" + vínculo do 1º usuário como GESTOR.
+  const project = await prisma.project.upsert({
+    where: { key: 'agenda' },
+    update: {},
+    create: { key: 'agenda', name: 'Agenda Institucional', ownerUserId: admin.id },
+  });
+  await prisma.membership.upsert({
+    where: { userId_projectId: { userId: admin.id, projectId: project.id } },
+    update: { role: 'GESTOR', active: true },
+    create: { userId: admin.id, projectId: project.id, role: 'GESTOR' },
   });
 
   const pessoal = await prisma.calendar.create({

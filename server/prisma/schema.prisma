@@ -17,11 +17,6 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
-  // [LEGADO] Papel global. Mantido em coexistência durante a migração para
-  // identidade central — o papel real passa a viver em Membership.role (por projeto).
-  // Será removido na Fase 3. Ver docs/arquitetura-identidade-central.md
-  // ADMIN | GESTOR | MEMBRO | VISITANTE
-  role         String   @default("MEMBRO")
   // FUNCIONARIO (PJ) | FAMILIAR (pessoa física)
   kind         String   @default("FUNCIONARIO")
   active       Boolean  @default(true)

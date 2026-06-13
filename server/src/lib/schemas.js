@@ -72,6 +72,28 @@ export const memberSchema = z.object({
   role: memberRole.optional(),
 });
 
+// ── Projetos e vínculos (identidade central) ──
+// GESTOR é deliberadamente omitido aqui: só se atribui via transferência de gestão.
+const assignableProjectRole = z.enum(['VISITANTE', 'MEMBRO', 'ADMIN']);
+
+export const projectCreateSchema = z.object({
+  key: z.string().trim().regex(/^[a-z][a-z0-9_-]*$/, 'key inválida (minúsculas, sem espaços; ex.: "admin")'),
+  name: z.string().trim().min(1, 'nome é obrigatório'),
+});
+
+export const projectMemberAddSchema = z.object({
+  email: z.string().trim().email('e-mail inválido'),
+  role: assignableProjectRole.optional(),
+});
+
+export const projectMemberUpdateSchema = z
+  .object({ role: assignableProjectRole.optional(), active: z.boolean().optional() })
+  .refine((d) => d.role !== undefined || d.active !== undefined, { message: 'informe role ou active' });
+
+export const transferOwnershipSchema = z
+  .object({ userId: z.string().min(1).optional(), email: z.string().trim().email().optional() })
+  .refine((d) => d.userId || d.email, { message: 'informe userId ou email do novo gestor' });
+
 // ── Eventos ──
 const eventVisibility = z.enum(['padrao', 'publico', 'privado']);
 const eventAvailability = z.enum(['OCUPADO', 'LIVRE']);

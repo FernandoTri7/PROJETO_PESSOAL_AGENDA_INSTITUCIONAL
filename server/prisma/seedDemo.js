@@ -15,11 +15,30 @@ const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo, d, h, mi, 0);
 const allDayStart = (y, mo, d) => new Date(y, mo, d, 0, 0, 0);
 const allDayEnd = (y, mo, d) => new Date(y, mo, d, 23, 59, 0);
 
-async function ensureUser(email, name, password, role) {
+async function ensureUser(email, name, password, kind = 'FUNCIONARIO') {
   return prisma.user.upsert({
     where: { email },
-    update: { role },
-    create: { email, name, passwordHash: await bcrypt.hash(password, 10), role },
+    update: {},
+    create: { email, name, passwordHash: await bcrypt.hash(password, 10), kind },
+  });
+}
+
+// Projeto "agenda" da identidade central (idempotente).
+async function ensureProject(key, name, ownerUserId) {
+  const project = await prisma.project.upsert({
+    where: { key },
+    update: { ownerUserId },
+    create: { key, name, ownerUserId },
+  });
+  return project;
+}
+
+// Vínculo usuário↔projeto com papel (GESTOR | ADMIN | MEMBRO | VISITANTE).
+async function ensureMembership(projectId, userId, role) {
+  await prisma.membership.upsert({
+    where: { userId_projectId: { userId, projectId } },
+    update: { role, active: true },
+    create: { userId, projectId, role },
   });
 }
 
@@ -42,9 +61,14 @@ async function ensureCalendar(name, type, color, ownerId) {
 }
 
 async function main() {
-  // ── Usuários (Daniel = seed; Fernando = login padrão ADMIN) ──
-  const daniel = await ensureUser('daniel@tri7.com.br', 'Daniel', '123456', 'ADMIN');
-  const fernando = await ensureUser('fernando@tri7.com.br', 'Fernando Orsi', 'admin', 'ADMIN');
+  // ── Usuários (Daniel = seed; Fernando = login institucional/gestor) ──
+  const daniel = await ensureUser('daniel@tri7.com.br', 'Daniel', '123456');
+  const fernando = await ensureUser('fernando@tri7.com.br', 'Fernando Orsi', 'admin');
+
+  // ── Projeto agenda + vínculos: Fernando=GESTOR (owner), Daniel=ADMIN ──
+  const projeto = await ensureProject('agenda', 'Agenda Institucional', fernando.id);
+  await ensureMembership(projeto.id, fernando.id, 'GESTOR');
+  await ensureMembership(projeto.id, daniel.id, 'ADMIN');
 
   // ── Agendas (reusa as existentes; cria Família) ──
   const pessoal = await ensureCalendar('Minha Agenda', 'PESSOAL', '#1a73e8', daniel.id);
