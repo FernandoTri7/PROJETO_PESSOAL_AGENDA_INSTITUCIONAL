@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
-import { loadPrefs, getPrefs, savePrefs, isAdmin as getIsAdmin } from '../../src/prefs';
+import { loadPrefs, getPrefs, savePrefs, isAdmin as getIsAdmin, getDefaultView, setDefaultView } from '../../src/prefs';
 import { requestNotificationPermission, scheduleEventNotifications } from '../../src/notifications';
 import { pickDriveFile } from '../../src/googlePicker';
 import {
@@ -770,7 +770,7 @@ export default function AgendaWeb() {
   const today = new Date();
   const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selected, setSelected] = useState(dayKey(today));
-  const [view, setView] = useState<'mensal'|'lista'|'categoria'|'anual'>('mensal');
+  const [view, setView] = useState<'mensal'|'lista'|'categoria'|'anual'>(() => getDefaultView('agenda', 'mensal') as any);
   const [events, setEvents] = useState<any[]>([]);
   const [calendars, setCalendars] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
@@ -820,7 +820,7 @@ export default function AgendaWeb() {
   useEffect(() => {
     api('/calendars').then(setCalendars).catch(()=>{});
     api('/categories').then((list) => { setCategories(list); setCats(list); }).catch(()=>{});
-    loadPrefs().then((p) => { setPrefs(p); setAdmin(getIsAdmin()); if (p.notificationsEnabled) requestNotificationPermission(); });
+    loadPrefs().then((p) => { setPrefs(p); setAdmin(getIsAdmin()); setView(getDefaultView('agenda', 'mensal') as any); if (p.notificationsEnabled) requestNotificationPermission(); });
   }, []);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
@@ -920,7 +920,7 @@ export default function AgendaWeb() {
           )}
           <div className="view-tabs">
             {(['mensal','lista','categoria','anual'] as const).map(v => (
-              <button key={v} className={`view-tab${view===v?' active':''}`} onClick={() => setView(v)}>
+              <button key={v} className={`view-tab${view===v?' active':''}`} onClick={() => { setView(v); setDefaultView('agenda', v); }}>
                 {v.charAt(0).toUpperCase()+v.slice(1)}
               </button>
             ))}

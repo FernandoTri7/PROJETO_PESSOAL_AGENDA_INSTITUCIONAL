@@ -47,6 +47,8 @@ export const prefsSchema = z.object({
   notificationsEnabled: z.boolean().optional(),
   useInstitutional: z.boolean().optional(),
   hiddenCalendarIds: z.array(z.string().min(1)).optional(),
+  // Visão padrão preferida por tela (ex.: { agenda: 'mensal', birthdays: 'lista' }).
+  defaultViews: z.record(z.string(), z.string()).optional(),
 }).partial();
 
 // ── Agendas e membros ──

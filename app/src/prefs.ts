@@ -7,11 +7,13 @@ export type Prefs = {
   notificationsEnabled: boolean;
   useInstitutional: boolean;
   hiddenCalendarIds: string[];
+  // Visão padrão preferida por tela (ex.: { agenda: 'mensal', birthdays: 'lista' }).
+  defaultViews: Record<string, string>;
 };
 
 export type Me = { id: string; name: string; email: string; role: string; phone?: string | null };
 
-const DEFAULT: Prefs = { notificationsEnabled: false, useInstitutional: true, hiddenCalendarIds: [] };
+const DEFAULT: Prefs = { notificationsEnabled: false, useInstitutional: true, hiddenCalendarIds: [], defaultViews: {} };
 
 let cache: Prefs = { ...DEFAULT };
 let me: Me | null = null;
@@ -38,4 +40,15 @@ export async function savePrefs(patch: Partial<Prefs>): Promise<Prefs> {
   cache = { ...DEFAULT, ...(res?.prefs || {}) };
   loaded = true;
   return cache;
+}
+
+// Visão padrão por tela: lê do cache (fallback) e grava lembrando a preferência do usuário.
+export function getDefaultView(screen: string, fallback: string): string {
+  return cache.defaultViews?.[screen] || fallback;
+}
+export async function setDefaultView(screen: string, view: string): Promise<Prefs> {
+  const defaultViews = { ...(cache.defaultViews || {}), [screen]: view };
+  // Atualiza o cache local imediatamente (o save envia o objeto completo; o server faz merge raso).
+  cache = { ...cache, defaultViews };
+  return savePrefs({ defaultViews });
 }

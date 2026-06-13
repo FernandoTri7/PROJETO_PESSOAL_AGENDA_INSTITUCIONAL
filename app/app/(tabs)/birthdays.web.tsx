@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
-import { injectWebCss } from '../../src/webCss';
+import { injectWebCss, MONTHS_PT } from '../../src/webCss';
+import { loadPrefs, getDefaultView, setDefaultView } from '../../src/prefs';
 
 const GROUP_COLORS: Record<string,string> = {
   CRIANCA: '#F5A018', JOVEM: '#22C55E', ADULTO: '#0F5C5E',
@@ -111,6 +112,7 @@ export default function BirthdaysWeb() {
   const [modal, setModal] = useState<any>(null);
   const [filter, setFilter] = useState<'TODOS'|'CRIANCA'|'JOVEM'|'ADULTO'>('TODOS');
   const [search, setSearch] = useState('');
+  const [view, setView] = useState<'lista'|'mensal'|'categoria'>(() => getDefaultView('birthdays', 'lista') as any);
 
   // FAB global: ?new=<ts> abre o modal de novo aniversário
   const { new: newParam } = useLocalSearchParams<{ new?: string }>();
@@ -120,7 +122,9 @@ export default function BirthdaysWeb() {
     const [bds, cals] = await Promise.all([api('/birthdays'), api('/calendars')]).catch(()=>[[],[]]);
     setBirthdays(bds); setCalendars(cals);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadPrefs().then(() => setView(getDefaultView('birthdays', 'lista') as any)); }, []);
+
+  function changeView(v: 'lista'|'mensal'|'categoria') { setView(v); setDefaultView('birthdays', v); }
 
   const shown = birthdays.filter(b =>
     (filter==='TODOS' || b.group===filter) &&
@@ -130,6 +134,34 @@ export default function BirthdaysWeb() {
   const counts = { CRIANCA: birthdays.filter(b=>b.group==='CRIANCA').length, JOVEM: birthdays.filter(b=>b.group==='JOVEM').length, ADULTO: birthdays.filter(b=>b.group==='ADULTO').length };
 
   function onSaved() { setModal(null); load(); }
+
+  const renderCard = (b: any) => {
+    const color = GROUP_COLORS[b.group] || '#9ca3af';
+    return (
+      <div key={b.id} className="bd-card" onClick={() => setModal(b)}>
+        <div className="bd-avatar" style={{ background: color+'22' }}>
+          <Ionicons name={(GROUP_ICONS[b.group] || 'person') as any} size={20} color={color} />
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div className="bd-name">{b.name}</div>
+          <div className="bd-info">{b.age} anos · {GROUP_LABELS[b.group] || b.group}</div>
+          <div style={{ fontSize:11, marginTop:3 }}>
+            <span style={{ color: b.daysUntil===0 ? '#ef4444' : b.daysUntil<=7 ? '#f59e0b' : 'var(--muted)' }}>🎂 {nextBdStr(b.birthDate)}</span>
+            {b.phone && <span style={{ color:'var(--muted)', marginLeft:8 }}>📞 {b.phone}</span>}
+          </div>
+        </div>
+        <span className="pill" style={{ background: color+'22', color, flexShrink:0 }}>{GROUP_LABELS[b.group]}</span>
+      </div>
+    );
+  };
+
+  // Agrupamentos para as visões Mensal (por mês de nascimento) e Categoria (faixa etária).
+  const byMonth = MONTHS_PT
+    .map((label: string, i: number) => ({ label, items: shown.filter(b => new Date(b.birthDate).getMonth() === i).sort((a,b)=> new Date(a.birthDate).getDate() - new Date(b.birthDate).getDate()) }))
+    .filter(g => g.items.length);
+  const byGroup = (['CRIANCA','JOVEM','ADULTO'] as const)
+    .map(g => ({ key: g, label: GROUP_LABELS[g], items: shown.filter(b => b.group === g) }))
+    .filter(g => g.items.length);
 
   return (
     <div className="page">
@@ -168,36 +200,31 @@ export default function BirthdaysWeb() {
         </div>
       </div>
 
-      {/* Cards */}
+      {/* Visão (layout) — preferência lembrada por usuário */}
+      <div className="view-tabs" style={{ marginBottom: 16 }}>
+        {([['lista','Lista'],['mensal','Mensal'],['categoria','Categoria']] as const).map(([v, label]) => (
+          <button key={v} className={`view-tab${view===v?' active':''}`} onClick={() => changeView(v)}>{label}</button>
+        ))}
+      </div>
+
+      {/* Conteúdo conforme a visão */}
       {shown.length === 0
         ? <div className="empty"><div className="empty-icon"><Ionicons name="gift-outline" size={36} color="#9AA0A6" /></div><div className="empty-text">Nenhum aniversário encontrado</div></div>
-        : <div className="bd-grid">
-            {shown.map(b => {
-              const color = GROUP_COLORS[b.group] || '#9ca3af';
-              return (
-                <div key={b.id} className="bd-card" onClick={() => setModal(b)}>
-                  <div className="bd-avatar" style={{ background: color+'22' }}>
-                    <Ionicons name={(GROUP_ICONS[b.group] || 'person') as any} size={20} color={color} />
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="bd-name">{b.name}</div>
-                    <div className="bd-info">
-                      {b.age} anos · {GROUP_LABELS[b.group] || b.group}
-                    </div>
-                    <div style={{ fontSize:11, marginTop:3 }}>
-                      <span style={{ color: b.daysUntil===0 ? '#ef4444' : b.daysUntil<=7 ? '#f59e0b' : 'var(--muted)' }}>
-                        🎂 {nextBdStr(b.birthDate)}
-                      </span>
-                      {b.phone && <span style={{ color:'var(--muted)', marginLeft:8 }}>📞 {b.phone}</span>}
-                    </div>
-                  </div>
-                  <span className="pill" style={{ background: color+'22', color, flexShrink:0 }}>
-                    {GROUP_LABELS[b.group]}
-                  </span>
+        : view === 'lista'
+          ? <div className="bd-grid">{shown.map(renderCard)}</div>
+          : view === 'mensal'
+            ? <div>{byMonth.map(g => (
+                <div key={g.label} style={{ marginBottom: 18 }}>
+                  <div className="section-label" style={{ marginBottom: 8 }}>{g.label} · {g.items.length}</div>
+                  <div className="bd-grid">{g.items.map(renderCard)}</div>
                 </div>
-              );
-            })}
-          </div>
+              ))}</div>
+            : <div>{byGroup.map(g => (
+                <div key={g.key} style={{ marginBottom: 18 }}>
+                  <div className="section-label" style={{ marginBottom: 8 }}>{g.label}s · {g.items.length}</div>
+                  <div className="bd-grid">{g.items.map(renderCard)}</div>
+                </div>
+              ))}</div>
       }
 
       {modal && (
