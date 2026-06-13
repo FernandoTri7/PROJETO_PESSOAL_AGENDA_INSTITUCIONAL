@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { api, clearToken } from '../../src/api';
-import { loadPrefs, savePrefs, getPrefs } from '../../src/prefs';
+import { loadPrefs, savePrefs, getPrefs, isAdmin } from '../../src/prefs';
 import { requestNotificationPermission } from '../../src/notifications';
 import { injectWebCss } from '../../src/webCss';
+import { AccessAdmin } from '../../src/accessAdmin';
 
 function ShareModal({ cal, onClose, onSaved }: any) {
   const [email, setEmail] = useState('');
@@ -267,6 +268,7 @@ export default function MoreWeb() {
   const [vegModal, setVegModal] = useState<any>(null);
   const [catModal, setCatModal] = useState<any>(null);
   const [prefs, setPrefs] = useState(getPrefs());
+  const [admin, setAdmin] = useState(isAdmin());
   const [gstatus, setGstatus] = useState<any>({ configured: false, connected: false, email: null });
   const [googleMsg, setGoogleMsg] = useState('');
 
@@ -276,7 +278,7 @@ export default function MoreWeb() {
   }
   useEffect(() => {
     load();
-    loadPrefs().then(setPrefs);
+    loadPrefs().then((p) => { setPrefs(p); setAdmin(isAdmin()); });
     api('/google/status').then(setGstatus).catch(()=>{});
     if (typeof window !== 'undefined') {
       const q = new URLSearchParams(window.location.search).get('google');
@@ -316,6 +318,9 @@ export default function MoreWeb() {
       <div className="page-header">
         <h1 className="page-title" style={{ display:'inline-flex', alignItems:'center', gap:8 }}><Ionicons name="settings-outline" size={20} /> Configurações</h1>
       </div>
+
+      {/* Administração de acessos (identidade central) — só para gestor/admin */}
+      {admin && <AccessAdmin />}
 
       {/* Preferences section */}
       <div className="section-label">Preferências</div>
