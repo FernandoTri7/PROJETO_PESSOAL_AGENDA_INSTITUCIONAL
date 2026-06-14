@@ -196,6 +196,26 @@ export const sessionCreateSchema = z.object({
 });
 export const sessionUpdateSchema = sessionCreateSchema.partial();
 
+// ── Associados (sócios) ──
+export const associadoCreateSchema = z.object({
+  nome: z.string().trim().min(1, 'nome é obrigatório'),
+  grau: optText,
+  diaNasc: numLike.nullish(),
+  mesNasc: numLike.nullish(),
+  nascimento: dateLike.nullish(),
+  cpf: optText,
+  status: optText,
+  celular: optText,
+  residencial: optText,
+  email: optText,
+  emailAlt: optText,
+  endResidencial: optText,
+  endComercial: optText,
+  endOutro: optText,
+  ativo: z.boolean().optional(),
+});
+export const associadoUpdateSchema = associadoCreateSchema.partial();
+
 // ── Estoque de vegetal ──
 export const vegetalCreateSchema = z.object({
   nome: z.string().trim().min(1, 'nome é obrigatório'),

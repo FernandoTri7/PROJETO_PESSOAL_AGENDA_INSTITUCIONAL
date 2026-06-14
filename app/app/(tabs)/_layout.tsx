@@ -39,8 +39,9 @@ export default function TabsLayout() {
         <Tabs.Screen name="birthdays" options={{ title: 'Aniversários', tabBarIcon: tabIcon('gift') }} />
         <Tabs.Screen name="sessions" options={{ title: 'Sessões', tabBarIcon: tabIcon('leaf'), href: useInstitutional ? undefined : null } as any} />
         <Tabs.Screen name="more" options={{ title: 'Mais', tabBarIcon: tabIcon('ellipsis-horizontal') }} />
-        {/* Gestão de acessos é feita na web; oculta da tab bar nativa. */}
+        {/* Gestão de acessos e associados é feita na web; oculta da tab bar nativa. */}
         <Tabs.Screen name="acessos" options={{ href: null } as any} />
+        <Tabs.Screen name="associados" options={{ href: null } as any} />
       </Tabs>
       <SpeedDial />
     </View>

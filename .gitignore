@@ -16,6 +16,12 @@ server/prisma/*.db-journal
 # Uploads (áudio das tarefas) — arquivos locais, não versionar
 server/uploads/
 
+# Arquivos de importação (planilhas com dados pessoais reais — LGPD) — nunca versionar
+Arquivos/
+server/*.csv
+server/*.xls
+server/*.xlsx
+
 # Logs
 *.log
 server-out.txt

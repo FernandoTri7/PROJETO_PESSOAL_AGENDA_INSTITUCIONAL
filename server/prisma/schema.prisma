@@ -349,3 +349,36 @@ model VegetalLote {
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 }
+
+// ───────────────────────── Cadastro de Associados (sócios) ─────────────────────────
+// Importável de planilha (.xls/.xlsx/.csv) ou, no futuro, via API de outro sistema.
+// Base para vincular pessoas (ex.: M. Assistente / Auxiliares nos levantamentos de estoque).
+model Associado {
+  id             String    @id @default(cuid())
+  nome           String
+  // Grau/quadro na instituição (ex.: "QM").
+  grau           String?
+  // Aniversário: dia/mês sempre presentes; nascimento completo quando há ano.
+  diaNasc        Int?
+  mesNasc        Int?
+  nascimento     DateTime?
+  // CPF armazenado só com dígitos (formatado na borda/UI). Único quando informado.
+  cpf            String?   @unique
+  // Situação na instituição (ex.: "FREQUENTE").
+  status         String?
+  celular        String?
+  residencial    String?
+  email          String?
+  emailAlt       String?
+  endResidencial String?
+  endComercial   String?
+  endOutro       String?
+  ativo          Boolean   @default(true)
+  // Origem do registro: "manual" | "import" | "api".
+  origem         String    @default("manual")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([nome])
+  @@index([status])
+}

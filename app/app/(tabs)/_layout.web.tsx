@@ -83,8 +83,9 @@ const TABS = [
   { path: '/more',       icon: 'settings-outline',  label: 'Mais' },
 ] as const;
 
-// Item só para GESTOR/ADMIN — gestão de usuários e acessos (identidade central).
+// Itens só para GESTOR/ADMIN.
 const ADMIN_TAB = { path: '/acessos', icon: 'shield-checkmark-outline', label: 'Usuários e acessos' } as const;
+const ASSOCIADOS_TAB = { path: '/associados', icon: 'people-outline', label: 'Associados' } as const;
 
 // Ações de "criar" do sistema — para um novo cadastro, adicione um item aqui.
 // Cada ação navega para a rota com ?new=<ts>; a tela abre seu modal ao detectar o param.
@@ -146,8 +147,8 @@ export default function WebLayout() {
 
   // Quando o institucional está desligado, a aba e a ação de Sessões somem.
   const baseTabs = TABS.filter((t) => useInstitutional || t.path !== '/sessions');
-  // Insere "Usuários e acessos" antes de "Mais", só para gestor/admin.
-  const tabs = admin ? [...baseTabs.slice(0, -1), ADMIN_TAB, baseTabs[baseTabs.length - 1]] : baseTabs;
+  // Insere "Associados" e "Usuários e acessos" antes de "Mais", só para gestor/admin.
+  const tabs = admin ? [...baseTabs.slice(0, -1), ASSOCIADOS_TAB, ADMIN_TAB, baseTabs[baseTabs.length - 1]] : baseTabs;
   const createActions = CREATE_ACTIONS.filter((a) => useInstitutional || a.route !== '/sessions');
 
   if (!ready) {
