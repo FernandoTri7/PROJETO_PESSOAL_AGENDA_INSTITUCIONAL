@@ -235,10 +235,22 @@ const levantamentoItemSchema = z.object({
   notas: optText,
 });
 
+// Auxiliar: da base (associadoId) OU manual de outro núcleo (nome + grau + núcleo opcional).
+const levantamentoAuxiliarSchema = z.object({
+  associadoId: optText,
+  nome: optText,
+  grau: optText,
+  nucleo: optText,
+});
+
 export const levantamentoCreateSchema = z.object({
   data: dateLike,
+  // M. Assistente: da base (assistenteId) OU manual de outro núcleo (assistenteNome/Grau/Nucleo).
   assistenteId: optText,
-  auxiliarIds: z.array(z.string().min(1)).optional(),
+  assistenteNome: optText,
+  assistenteGrau: optText,
+  assistenteNucleo: optText,
+  auxiliares: z.array(levantamentoAuxiliarSchema).optional(),
   notas: optText,
   itens: z.array(levantamentoItemSchema).optional(),
 });

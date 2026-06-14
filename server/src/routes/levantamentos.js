@@ -45,13 +45,36 @@ function buildItens(rawItens) {
   return out;
 }
 
-// Valida que o M.Assistente (se informado) é associado de grau QM. Retorna mensagem de erro ou null.
+// Valida que o M.Assistente DA BASE (se informado) é associado de grau QM. Retorna mensagem de erro ou null.
+// (M. Assistente manual de outro núcleo não passa por aqui — grau é informado livremente.)
 async function validateAssistente(assistenteId) {
   if (!assistenteId) return null;
   const a = await prisma.associado.findUnique({ where: { id: assistenteId } });
   if (!a) return 'M. Assistente não encontrado nos associados.';
   if ((a.grau || '').toUpperCase() !== 'QM') return 'O M. Assistente deve ser um associado de grau QM.';
   return null;
+}
+
+const txt = (v) => (v && String(v).trim() ? String(v).trim() : null);
+
+// Normaliza os auxiliares: da base (associadoId) OU snapshot manual (nome/grau/nucleo). Descarta vazios.
+function buildAuxiliares(rawAux) {
+  const out = [];
+  for (const a of rawAux || []) {
+    if (!a) continue;
+    if (a.associadoId) { out.push({ associadoId: a.associadoId }); continue; }
+    const nome = txt(a.nome);
+    if (nome) out.push({ associadoId: null, nome, grau: txt(a.grau), nucleo: txt(a.nucleo) });
+  }
+  return out;
+}
+
+// Campos de M. Assistente a gravar: da base (assistenteId) OU manual (snapshot), nunca os dois.
+function buildAssistente(b) {
+  if (b.assistenteId) return { assistenteId: b.assistenteId, assistenteNome: null, assistenteGrau: null, assistenteNucleo: null };
+  const nome = txt(b.assistenteNome);
+  if (nome) return { assistenteId: null, assistenteNome: nome, assistenteGrau: txt(b.assistenteGrau), assistenteNucleo: txt(b.assistenteNucleo) };
+  return { assistenteId: null, assistenteNome: null, assistenteGrau: null, assistenteNucleo: null };
 }
 
 // GET /api/levantamentos → { atual, historico } (atual = mais recente; histórico = demais, desc por data)
@@ -79,10 +102,10 @@ levantamentosRouter.post('/', canWrite, validateBody(levantamentoCreateSchema), 
   const l = await prisma.levantamento.create({
     data: {
       data: new Date(b.data),
-      assistenteId: b.assistenteId || null,
+      ...buildAssistente(b),
       notas: b.notas ? String(b.notas).trim() : null,
       itens: { create: buildItens(b.itens) },
-      auxiliares: { create: (b.auxiliarIds || []).map((associadoId) => ({ associadoId })) },
+      auxiliares: { create: buildAuxiliares(b.auxiliares) },
     },
     include,
   });
@@ -94,7 +117,9 @@ levantamentosRouter.put('/:id', canWrite, validateBody(levantamentoUpdateSchema)
   const existing = await prisma.levantamento.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Levantamento não encontrado' });
 
-  if (b.assistenteId !== undefined) {
+  // M. Assistente vem como unidade (id OU snapshot manual). Valida grau QM só quando da base.
+  const assistTouched = ['assistenteId', 'assistenteNome', 'assistenteGrau', 'assistenteNucleo'].some((k) => b[k] !== undefined);
+  if (assistTouched) {
     const erroAssist = await validateAssistente(b.assistenteId);
     if (erroAssist) return res.status(400).json({ error: erroAssist });
   }
@@ -102,11 +127,11 @@ levantamentosRouter.put('/:id', canWrite, validateBody(levantamentoUpdateSchema)
   // Itens e auxiliares: substituição completa (apaga e recria) quando o campo vem no corpo.
   const data = {};
   if (b.data !== undefined) data.data = new Date(b.data);
-  if (b.assistenteId !== undefined) data.assistenteId = b.assistenteId || null;
+  if (assistTouched) Object.assign(data, buildAssistente(b));
   if (b.notas !== undefined) data.notas = b.notas ? String(b.notas).trim() : null;
   if (b.itens !== undefined) data.itens = { deleteMany: {}, create: buildItens(b.itens) };
-  if (b.auxiliarIds !== undefined)
-    data.auxiliares = { deleteMany: {}, create: b.auxiliarIds.map((associadoId) => ({ associadoId })) };
+  if (b.auxiliares !== undefined)
+    data.auxiliares = { deleteMany: {}, create: buildAuxiliares(b.auxiliares) };
 
   const l = await prisma.levantamento.update({ where: { id: req.params.id }, data, include });
   res.json(withTotal(l));

@@ -394,9 +394,13 @@ model Associado {
 model Levantamento {
   id           String   @id @default(cuid())
   data         DateTime
-  // M. Assistente responsável — deve ser associado de grau QM (validado na rota).
+  // M. Assistente responsável — quando da base, deve ser associado grau QM (validado na rota).
   assistenteId String?
   assistente   Associado? @relation("LevantamentoAssistente", fields: [assistenteId], references: [id])
+  // Snapshot de M. Assistente de OUTRO NÚCLEO (fora da base de associados): só histórico, não cadastra.
+  assistenteNome   String?
+  assistenteGrau   String?
+  assistenteNucleo String?
   notas        String?
   itens        LevantamentoItem[]
   auxiliares   LevantamentoAuxiliar[]
@@ -421,13 +425,18 @@ model LevantamentoItem {
   @@index([levantamentoId])
 }
 
-// Auxiliares (associados) vinculados a um levantamento.
+// Auxiliares vinculados a um levantamento. Da base (associadoId) OU de outro núcleo (snapshot manual).
 model LevantamentoAuxiliar {
-  id             String       @id @default(cuid())
+  id             String        @id @default(cuid())
   levantamentoId String
-  levantamento   Levantamento @relation(fields: [levantamentoId], references: [id], onDelete: Cascade)
-  associadoId    String
-  associado      Associado    @relation(fields: [associadoId], references: [id])
+  levantamento   Levantamento  @relation(fields: [levantamentoId], references: [id], onDelete: Cascade)
+  // Vínculo com a base de associados (quando a pessoa está na lista).
+  associadoId    String?
+  associado      Associado?    @relation(fields: [associadoId], references: [id])
+  // Snapshot de auxiliar de OUTRO NÚCLEO (fora da base): só histórico, não cadastra.
+  nome           String?
+  grau           String?
+  nucleo         String?
 
   @@unique([levantamentoId, associadoId])
   @@index([levantamentoId])

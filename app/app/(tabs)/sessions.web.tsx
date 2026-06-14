@@ -35,6 +35,21 @@ function titleCaseNome(s?: string | null): string {
   ).join(' ');
 }
 
+// Nome de exibição do M. Assistente de um levantamento (base ou manual de outro núcleo), em MAIÚSCULO.
+function assistDisplay(l: any): string {
+  if (!l) return '';
+  if (l.assistente) return (l.assistente.nome || '').toUpperCase();
+  if (l.assistenteNome) return `${(l.assistenteNome || '').toUpperCase()} (OUTRO NÚCLEO${l.assistenteNucleo ? ` · ${String(l.assistenteNucleo).toUpperCase()}` : ''})`;
+  return '';
+}
+// Lista de auxiliares de um levantamento (Title Case; manual marca "Outro Núcleo").
+function auxList(l: any): string {
+  return (l?.auxiliares || []).map((x: any) =>
+    x.associado ? titleCaseNome(x.associado.nome)
+                : `${titleCaseNome(x.nome)} (${x.nucleo ? `outro núcleo · ${x.nucleo}` : 'outro núcleo'})`
+  ).filter(Boolean).join(', ');
+}
+
 // Totaliza uma lista de sessões (sessões, coado, retorno e copos equivalentes).
 function computeStats(list: any[]) {
   const sum = (k: string) => list.reduce((a, s) => a + (Number(s[k]) || 0), 0);
@@ -198,13 +213,23 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
 
 // ─── Levantamentos de estoque ─────────────────────────────────────────────────
 
-// Autocomplete de associados. mode="single" (M.Assistente) ou "multi" (auxiliares).
-// grau opcional filtra por grau (ex.: "QM" para M.Assistente). value: id (single) ou ids[] (multi).
+// Rótulo de uma pessoa selecionada (base ou manual de outro núcleo).
+function pessoaLabel(p: any): string {
+  if (!p) return '';
+  const base = titleCaseNome(p.nome);
+  const extras = [p.grau, p.manual ? `Outro Núcleo${p.nucleo ? ` · ${p.nucleo}` : ''}` : null].filter(Boolean);
+  return extras.length ? `${base} (${extras.join(' · ')})` : base;
+}
+
+// Autocomplete de pessoas para o levantamento. mode="single" (M.Assistente) ou "multi" (auxiliares).
+// Cada pessoa é { id, nome, grau } (da base) OU { nome, grau, nucleo, manual:true } (outro núcleo).
+// grau filtra a busca na base (ex.: "QM"). value: objeto (single) ou objeto[] (multi).
 function AssociadoPicker({ mode='single', grau, value, onChange, placeholder }: any) {
   const [q, setQ] = useState('');
   const [opts, setOpts] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
-  const [cache, setCache] = useState<Record<string, any>>({}); // id → associado (p/ exibir selecionados)
+  const [showManual, setShowManual] = useState(false);
+  const [man, setMan] = useState<any>({ nome: '', grau: '', nucleo: '' });
 
   // Busca com debounce ao digitar.
   useEffect(() => {
@@ -215,76 +240,90 @@ function AssociadoPicker({ mode='single', grau, value, onChange, placeholder }: 
       if (grau) params.set('grau', grau);
       try {
         const list = await api(`/associados?${params.toString()}`);
-        if (!alive) return;
-        setOpts(list || []);
-        setCache((c) => { const n = { ...c }; for (const a of list || []) n[a.id] = a; return n; });
+        if (alive) setOpts(list || []);
       } catch { if (alive) setOpts([]); }
     }, 250);
     return () => { alive = false; clearTimeout(t); };
   }, [q, grau]);
 
-  const selectedIds: string[] = mode === 'multi' ? (value || []) : (value ? [value] : []);
-  const nameOf = (id: string) => cache[id]?.nome || '…';
+  const selected: any[] = mode === 'multi' ? (value || []) : (value ? [value] : []);
+  const isPicked = (a: any) => selected.some((s) => s.id && s.id === a.id);
 
-  function pick(a: any) {
-    setCache((c) => ({ ...c, [a.id]: a }));
-    if (mode === 'multi') {
-      if (!selectedIds.includes(a.id)) onChange([...selectedIds, a.id]);
-      setQ('');
-    } else {
-      onChange(a.id); setQ(''); setOpen(false);
-    }
+  function addBase(a: any) {
+    const obj = { id: a.id, nome: a.nome, grau: a.grau };
+    if (mode === 'multi') { if (!isPicked(a)) onChange([...selected, obj]); setQ(''); }
+    else { onChange(obj); setQ(''); setOpen(false); }
   }
-  function unpick(id: string) {
-    if (mode === 'multi') onChange(selectedIds.filter((x) => x !== id));
+  function addManual() {
+    const nome = String(man.nome || '').trim();
+    if (!nome) return;
+    const obj = { nome, grau: String(man.grau || '').trim() || undefined, nucleo: String(man.nucleo || '').trim() || undefined, manual: true };
+    if (mode === 'multi') onChange([...selected, obj]);
+    else onChange(obj);
+    setMan({ nome: '', grau: '', nucleo: '' }); setShowManual(false); setQ('');
+  }
+  function removeAt(idx: number) {
+    if (mode === 'multi') onChange(selected.filter((_, i) => i !== idx));
     else onChange(null);
   }
 
-  // Pré-carrega nomes dos ids já selecionados que não estão em cache.
-  useEffect(() => {
-    const missing = selectedIds.filter((id) => !cache[id]);
-    if (!missing.length) return;
-    (async () => {
-      for (const id of missing) {
-        try { const a = await api(`/associados/${id}`).catch(() => null); if (a) setCache((c) => ({ ...c, [id]: a })); } catch {}
-      }
-    })();
-  }, [selectedIds.join(',')]);
+  const showInput = mode === 'multi' || selected.length === 0;
 
   return (
     <div style={{ position: 'relative' }}>
       {/* Chips dos selecionados */}
-      {selectedIds.length > 0 && (
+      {selected.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-          {selectedIds.map((id) => (
-            <span key={id} className="pill" style={{ background: '#0F5C2E18', color: '#0F5C2E', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {titleCaseNome(nameOf(id))}
-              <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={() => unpick(id)}>✕</span>
+          {selected.map((p, idx) => (
+            <span key={idx} className="pill" style={{ background: p.manual ? '#C9952A22' : '#0F5C2E18', color: p.manual ? '#8a6516' : '#0F5C2E', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {pessoaLabel(p)}
+              <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={() => removeAt(idx)}>✕</span>
             </span>
           ))}
         </div>
       )}
-      {(mode === 'multi' || selectedIds.length === 0) && (
-        <input
-          className="form-input"
-          value={q}
-          placeholder={placeholder || 'Buscar associado…'}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-        />
-      )}
-      {open && opts.length > 0 && (
-        <div style={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
-          {opts.filter((a) => !selectedIds.includes(a.id)).map((a) => (
-            <div key={a.id} onMouseDown={() => pick(a)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}
-                 onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                 onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}>
-              <span>{titleCaseNome(a.nome)}</span>
-              {a.grau && <span style={{ color: 'var(--muted)', fontSize: 11 }}>{a.grau}</span>}
+      {showInput && (
+        <>
+          <input
+            className="form-input"
+            value={q}
+            placeholder={placeholder || 'Buscar associado…'}
+            onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+          />
+          {open && opts.length > 0 && (
+            <div style={{ position: 'absolute', zIndex: 20, top: showManual ? 'auto' : '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
+              {opts.filter((a) => !isPicked(a)).map((a) => (
+                <div key={a.id} onMouseDown={() => addBase(a)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}
+                     onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+                     onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}>
+                  <span>{titleCaseNome(a.nome)}</span>
+                  {a.grau && <span style={{ color: 'var(--muted)', fontSize: 11 }}>{a.grau}</span>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+          {/* Entrada manual: pessoa de outro núcleo (não cadastra na base; fica só no levantamento) */}
+          {!showManual ? (
+            <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onMouseDown={(e) => { e.preventDefault(); setShowManual(true); setOpen(false); }}>
+              + Não está na lista? Outro núcleo
+            </button>
+          ) : (
+            <div style={{ marginTop: 6, border: '1px dashed var(--border)', borderRadius: 8, padding: 8, background: '#FBF7EE' }}>
+              <div style={{ fontSize: 11, color: '#8a6516', fontWeight: 700, marginBottom: 6 }}>PESSOA DE OUTRO NÚCLEO (só neste levantamento)</div>
+              <div className="form-row" style={{ marginBottom: 6 }}>
+                <input className="form-input" placeholder="Nome *" value={man.nome} onChange={(e) => setMan((m: any) => ({ ...m, nome: e.target.value }))} />
+                <input className="form-input" placeholder="Grau" value={man.grau} onChange={(e) => setMan((m: any) => ({ ...m, grau: e.target.value }))} />
+              </div>
+              <input className="form-input" placeholder="Núcleo (opcional)" value={man.nucleo} onChange={(e) => setMan((m: any) => ({ ...m, nucleo: e.target.value }))} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={addManual} disabled={!String(man.nome).trim()}>Adicionar</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowManual(false); setMan({ nome: '', grau: '', nucleo: '' }); }}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -303,8 +342,14 @@ function LevantamentoModal({ lev, onClose, onSaved }: any) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<any>({
     data: lev?.data ? String(lev.data).slice(0, 10) : today,
-    assistenteId: lev?.assistente?.id || lev?.assistenteId || null,
-    auxiliarIds: (lev?.auxiliares || []).map((x: any) => x.associado?.id || x.associadoId).filter(Boolean),
+    // M. Assistente: objeto da base {id,nome,grau} OU manual {nome,grau,nucleo,manual}.
+    assistente: lev?.assistente
+      ? { id: lev.assistente.id, nome: lev.assistente.nome, grau: lev.assistente.grau }
+      : (lev?.assistenteNome ? { nome: lev.assistenteNome, grau: lev.assistenteGrau || undefined, nucleo: lev.assistenteNucleo || undefined, manual: true } : null),
+    auxiliares: (lev?.auxiliares || []).map((x: any) =>
+      x.associado
+        ? { id: x.associado.id, nome: x.associado.nome, grau: x.associado.grau }
+        : { nome: x.nome, grau: x.grau || undefined, nucleo: x.nucleo || undefined, manual: true }),
     notas: lev?.notas || '',
     itens: lev?.itens?.length ? lev.itens.map((i: any) => ({ ...i, litros: String(i.litros) })) : [emptyItem()],
   });
@@ -323,10 +368,17 @@ function LevantamentoModal({ lev, onClose, onSaved }: any) {
     if (!itens.length) { setError('Adicione ao menos um item com nome e litros.'); return; }
     setSaving(true); setError('');
     try {
+      const a = form.assistente;
+      const assistBody = a?.id
+        ? { assistenteId: a.id, assistenteNome: null, assistenteGrau: null, assistenteNucleo: null }
+        : a?.nome
+          ? { assistenteId: null, assistenteNome: a.nome, assistenteGrau: a.grau || null, assistenteNucleo: a.nucleo || null }
+          : { assistenteId: null, assistenteNome: null, assistenteGrau: null, assistenteNucleo: null };
       const body = {
         data: form.data,
-        assistenteId: form.assistenteId || null,
-        auxiliarIds: form.auxiliarIds,
+        ...assistBody,
+        auxiliares: (form.auxiliares || []).map((x: any) =>
+          x.id ? { associadoId: x.id } : { nome: x.nome, grau: x.grau || null, nucleo: x.nucleo || null }),
         notas: form.notas || null,
         itens: itens.map((it: any) => ({ ...it, litros: parseFloat(String(it.litros).replace(',', '.')) })),
       };
@@ -358,15 +410,15 @@ function LevantamentoModal({ lev, onClose, onSaved }: any) {
               <input className="form-input" type="date" value={form.data} onChange={(e) => setForm((f: any) => ({ ...f, data: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">M. Assistente (grau QM)</label>
-              <AssociadoPicker mode="single" grau="QM" value={form.assistenteId}
-                onChange={(v: any) => setForm((f: any) => ({ ...f, assistenteId: v }))} placeholder="Buscar M. Assistente…" />
+              <label className="form-label">M. Assistente (grau QM, ou outro núcleo)</label>
+              <AssociadoPicker mode="single" grau="QM" value={form.assistente}
+                onChange={(v: any) => setForm((f: any) => ({ ...f, assistente: v }))} placeholder="Buscar M. Assistente…" />
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">Auxiliares</label>
-            <AssociadoPicker mode="multi" value={form.auxiliarIds}
-              onChange={(v: any) => setForm((f: any) => ({ ...f, auxiliarIds: v }))} placeholder="Buscar auxiliares…" />
+            <AssociadoPicker mode="multi" value={form.auxiliares}
+              onChange={(v: any) => setForm((f: any) => ({ ...f, auxiliares: v }))} placeholder="Buscar auxiliares…" />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '14px 0 8px' }}>
@@ -613,12 +665,16 @@ export default function SessionsWeb() {
               Total em estoque {estoque.atual ? `(levantamento de ${fmtDate(estoque.atual.data)})` : ''}
             </div>
             <div style={{ fontSize:28, fontWeight:700, color:'#0F5C2E' }}>{(estoque.atual?.total || 0).toFixed(1)}L</div>
-            {estoque.atual?.assistente && (
+            {(estoque.atual?.assistente || estoque.atual?.assistenteNome || estoque.atual?.auxiliares?.length) ? (
               <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
-                <strong>M. Assistente:</strong> {(estoque.atual.assistente.nome || '').toUpperCase()}
-                {estoque.atual.auxiliares?.length ? ` · Aux.: ${estoque.atual.auxiliares.map((x:any)=>titleCaseNome(x.associado?.nome)).filter(Boolean).join(', ')}` : ''}
+                {(estoque.atual.assistente || estoque.atual.assistenteNome)
+                  ? <><strong>M. Assistente:</strong> {assistDisplay(estoque.atual)}</>
+                  : null}
+                {estoque.atual.auxiliares?.length
+                  ? `${(estoque.atual.assistente || estoque.atual.assistenteNome) ? ' · ' : ''}Aux.: ${auxList(estoque.atual)}`
+                  : ''}
               </div>
-            )}
+            ) : null}
           </div>
           <button className="btn btn-gold btn-sm" onClick={() => setLevModal({})}>+ Novo Levantamento</button>
         </div>
@@ -661,8 +717,8 @@ export default function SessionsWeb() {
                 {estoque.historico.map((l: any) => (
                   <tr key={l.id} onClick={() => setLevModal(l)}>
                     <td style={{ whiteSpace:'nowrap' }}>{fmtDate(l.data)}</td>
-                    <td>{l.assistente ? (l.assistente.nome || '').toUpperCase() : '—'}</td>
-                    <td>{l.auxiliares?.map((x:any)=>titleCaseNome(x.associado?.nome)).filter(Boolean).join(', ') || '—'}</td>
+                    <td>{assistDisplay(l) || '—'}</td>
+                    <td>{auxList(l) || '—'}</td>
                     <td>{l.itens?.length || 0}</td>
                     <td style={{ fontWeight:700, color:'#0F5C2E' }}>{(l.total||0).toFixed(1)}L</td>
                   </tr>
