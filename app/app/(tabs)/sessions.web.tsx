@@ -25,6 +25,37 @@ const TYPE_COLORS: Record<string,string> = {
 function typeLabel(k: string) { return TYPES.find(t=>t.key===k)?.label ?? k; }
 function typeColor(k: string) { return TYPE_COLORS[k] ?? '#6b7280'; }
 
+// Conectores que permanecem minúsculos em nomes próprios (pt-BR).
+const NAME_CONNECTORS = new Set(['de','da','do','das','dos','e','di','du','del','la','das','dello']);
+// Formata um nome em caixa Alta-e-baixa (Title Case), mantendo conectores minúsculos.
+function titleCaseNome(s?: string | null): string {
+  if (!s) return '';
+  return String(s).trim().toLowerCase().split(/\s+/).map((w, i) =>
+    i > 0 && NAME_CONNECTORS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)
+  ).join(' ');
+}
+
+// Totaliza uma lista de sessões (sessões, coado, retorno e copos equivalentes).
+function computeStats(list: any[]) {
+  const sum = (k: string) => list.reduce((a, s) => a + (Number(s[k]) || 0), 0);
+  const coposSimples = sum('coposSimples'), coposDuplos = sum('coposDuplos'), coposCriancas = sum('coposCriancas');
+  return {
+    totalSessoes: list.length,
+    coadoLitros: sum('coadoLitros'),
+    retornoLitros: sum('retornoLitros'),
+    coposSimples, coposDuplos, coposCriancas,
+    totalCopos: coposSimples + coposDuplos * 2 + coposCriancas,
+  };
+}
+
+// Métricas exibidas na comparação entre anos.
+const CMP_METRICS = [
+  { label: 'Total de Sessões', get: (s: any) => s.totalSessoes, fmt: (v: number) => String(v) },
+  { label: 'Vegetal Coado', get: (s: any) => s.coadoLitros, fmt: (v: number) => `${v.toFixed(1)}L` },
+  { label: 'Retorno', get: (s: any) => s.retornoLitros, fmt: (v: number) => `${v.toFixed(1)}L` },
+  { label: 'Copos (equiv.)', get: (s: any) => s.totalCopos, fmt: (v: number) => String(v) },
+];
+
 // ─── Session Form Modal ──────────────────────────────────────────────────────
 
 function SessionModal({ sess, calendars, onClose, onSaved }: any) {
@@ -165,74 +196,226 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
   );
 }
 
-// ─── Estoque de Vegetal (lotes) ──────────────────────────────────────────────
+// ─── Levantamentos de estoque ─────────────────────────────────────────────────
 
-function VegetalModal({ lote, onClose, onSaved }: any) {
-  const isNew = !lote?.id;
-  const [form, setForm] = useState<any>({ nome:'', origem:'', litros:'', local:'GELADEIRA', notas:'', ...(lote||{}) });
+// Autocomplete de associados. mode="single" (M.Assistente) ou "multi" (auxiliares).
+// grau opcional filtra por grau (ex.: "QM" para M.Assistente). value: id (single) ou ids[] (multi).
+function AssociadoPicker({ mode='single', grau, value, onChange, placeholder }: any) {
+  const [q, setQ] = useState('');
+  const [opts, setOpts] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [cache, setCache] = useState<Record<string, any>>({}); // id → associado (p/ exibir selecionados)
+
+  // Busca com debounce ao digitar.
+  useEffect(() => {
+    let alive = true;
+    const t = setTimeout(async () => {
+      const params = new URLSearchParams({ ativo: 'true', pageSize: '20' });
+      if (q.trim()) params.set('q', q.trim());
+      if (grau) params.set('grau', grau);
+      try {
+        const list = await api(`/associados?${params.toString()}`);
+        if (!alive) return;
+        setOpts(list || []);
+        setCache((c) => { const n = { ...c }; for (const a of list || []) n[a.id] = a; return n; });
+      } catch { if (alive) setOpts([]); }
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q, grau]);
+
+  const selectedIds: string[] = mode === 'multi' ? (value || []) : (value ? [value] : []);
+  const nameOf = (id: string) => cache[id]?.nome || '…';
+
+  function pick(a: any) {
+    setCache((c) => ({ ...c, [a.id]: a }));
+    if (mode === 'multi') {
+      if (!selectedIds.includes(a.id)) onChange([...selectedIds, a.id]);
+      setQ('');
+    } else {
+      onChange(a.id); setQ(''); setOpen(false);
+    }
+  }
+  function unpick(id: string) {
+    if (mode === 'multi') onChange(selectedIds.filter((x) => x !== id));
+    else onChange(null);
+  }
+
+  // Pré-carrega nomes dos ids já selecionados que não estão em cache.
+  useEffect(() => {
+    const missing = selectedIds.filter((id) => !cache[id]);
+    if (!missing.length) return;
+    (async () => {
+      for (const id of missing) {
+        try { const a = await api(`/associados/${id}`).catch(() => null); if (a) setCache((c) => ({ ...c, [id]: a })); } catch {}
+      }
+    })();
+  }, [selectedIds.join(',')]);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {/* Chips dos selecionados */}
+      {selectedIds.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+          {selectedIds.map((id) => (
+            <span key={id} className="pill" style={{ background: '#0F5C2E18', color: '#0F5C2E', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {titleCaseNome(nameOf(id))}
+              <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={() => unpick(id)}>✕</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {(mode === 'multi' || selectedIds.length === 0) && (
+        <input
+          className="form-input"
+          value={q}
+          placeholder={placeholder || 'Buscar associado…'}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+        />
+      )}
+      {open && opts.length > 0 && (
+        <div style={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
+          {opts.filter((a) => !selectedIds.includes(a.id)).map((a) => (
+            <div key={a.id} onMouseDown={() => pick(a)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}
+                 onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+                 onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}>
+              <span>{titleCaseNome(a.nome)}</span>
+              {a.grau && <span style={{ color: 'var(--muted)', fontSize: 11 }}>{a.grau}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LOCAIS = [
+  { v: 'GELADEIRA', label: 'Geladeira' },
+  { v: 'FORA', label: 'Fora (ambiente)' },
+  { v: 'OUTRO', label: 'Outro' },
+];
+
+const emptyItem = () => ({ nome: '', litros: '', local: 'GELADEIRA', origem: '', notas: '' });
+
+function LevantamentoModal({ lev, onClose, onSaved }: any) {
+  const isNew = !lev?.id;
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState<any>({
+    data: lev?.data ? String(lev.data).slice(0, 10) : today,
+    assistenteId: lev?.assistente?.id || lev?.assistenteId || null,
+    auxiliarIds: (lev?.auxiliares || []).map((x: any) => x.associado?.id || x.associadoId).filter(Boolean),
+    notas: lev?.notas || '',
+    itens: lev?.itens?.length ? lev.itens.map((i: any) => ({ ...i, litros: String(i.litros) })) : [emptyItem()],
+  });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  function set(k: string) { return (e: any) => setForm((f:any) => ({...f, [k]: e.target.value})); }
+
+  const setItem = (idx: number, k: string, v: any) =>
+    setForm((f: any) => ({ ...f, itens: f.itens.map((it: any, i: number) => (i === idx ? { ...it, [k]: v } : it)) }));
+  const addItem = () => setForm((f: any) => ({ ...f, itens: [...f.itens, emptyItem()] }));
+  const removeItem = (idx: number) => setForm((f: any) => ({ ...f, itens: f.itens.filter((_: any, i: number) => i !== idx) }));
+
+  const total = form.itens.reduce((s: number, it: any) => s + (parseFloat(String(it.litros).replace(',', '.')) || 0), 0);
 
   async function save() {
-    if (!form.nome.trim() || !form.litros) { setError('Nome e litros são obrigatórios'); return; }
+    const itens = form.itens.filter((it: any) => it.nome.trim() && it.litros !== '');
+    if (!itens.length) { setError('Adicione ao menos um item com nome e litros.'); return; }
     setSaving(true); setError('');
     try {
-      const body = { ...form, litros: parseFloat(String(form.litros).replace(',','.')) };
-      if (isNew) await api('/vegetal', { method: 'POST', body });
-      else       await api(`/vegetal/${lote.id}`, { method: 'PUT', body });
+      const body = {
+        data: form.data,
+        assistenteId: form.assistenteId || null,
+        auxiliarIds: form.auxiliarIds,
+        notas: form.notas || null,
+        itens: itens.map((it: any) => ({ ...it, litros: parseFloat(String(it.litros).replace(',', '.')) })),
+      };
+      if (isNew) await api('/levantamentos', { method: 'POST', body });
+      else await api(`/levantamentos/${lev.id}`, { method: 'PUT', body });
       onSaved();
-    } catch(e: any) { setError(e.message); }
+    } catch (e: any) { setError(e.message); }
     finally { setSaving(false); }
   }
 
   async function remove() {
-    if (!confirm('Excluir este lote?')) return;
-    await api(`/vegetal/${lote.id}`, { method: 'DELETE' });
+    if (!confirm('Excluir este levantamento e todos os seus itens?')) return;
+    await api(`/levantamentos/${lev.id}`, { method: 'DELETE' });
     onSaved();
   }
 
   return (
-    <div className="modal-backdrop" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
-      <div className="modal">
+    <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 720 }}>
         <div className="modal-header">
-          <h2 className="modal-title">{isNew ? 'Novo Lote' : 'Editar Lote'}</h2>
+          <h2 className="modal-title">{isNew ? 'Novo Levantamento' : 'Editar Levantamento'}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           {error && <div className="form-error">{error}</div>}
-          <div className="form-group">
-            <label className="form-label">Nome / Descrição *</label>
-            <input className="form-input" value={form.nome} onChange={set('nome')} placeholder="Ex.: Tucunacá Baliza" autoFocus />
-          </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Litros *</label>
-              <input className="form-input" type="number" step="0.1" value={form.litros} onChange={set('litros')} />
+              <label className="form-label">Data *</label>
+              <input className="form-input" type="date" value={form.data} onChange={(e) => setForm((f: any) => ({ ...f, data: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Local</label>
-              <select className="form-select" value={form.local} onChange={set('local')}>
-                <option value="GELADEIRA">Geladeira</option>
-                <option value="FORA">Fora (temperatura ambiente)</option>
-                <option value="OUTRO">Outro</option>
-              </select>
+              <label className="form-label">M. Assistente (grau QM)</label>
+              <AssociadoPicker mode="single" grau="QM" value={form.assistenteId}
+                onChange={(v: any) => setForm((f: any) => ({ ...f, assistenteId: v }))} placeholder="Buscar M. Assistente…" />
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Origem</label>
-            <input className="form-input" value={form.origem||''} onChange={set('origem')} placeholder="Ex.: NRI, Itinga, Baliza..." />
+            <label className="form-label">Auxiliares</label>
+            <AssociadoPicker mode="multi" value={form.auxiliarIds}
+              onChange={(v: any) => setForm((f: any) => ({ ...f, auxiliarIds: v }))} placeholder="Buscar auxiliares…" />
           </div>
-          <div className="form-group">
-            <label className="form-label">Notas</label>
-            <textarea className="form-textarea" value={form.notas||''} onChange={set('notas')} rows={2} />
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '14px 0 8px' }}>
+            <label className="form-label" style={{ margin: 0 }}>Itens do levantamento</label>
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>Total: <strong style={{ color: '#0F5C2E' }}>{total.toFixed(1)}L</strong></span>
+          </div>
+          {form.itens.map((it: any, idx: number) => (
+            <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ flex: '2 1 180px', margin: 0 }}>
+                  <label className="form-label">Nome / Descrição</label>
+                  <input className="form-input" value={it.nome} onChange={(e) => setItem(idx, 'nome', e.target.value)} placeholder="Ex.: Tucunacá Baliza" />
+                </div>
+                <div className="form-group" style={{ flex: '0 1 90px', margin: 0 }}>
+                  <label className="form-label">Litros</label>
+                  <input className="form-input" type="number" step="0.1" value={it.litros} onChange={(e) => setItem(idx, 'litros', e.target.value)} />
+                </div>
+                <div className="form-group" style={{ flex: '0 1 130px', margin: 0 }}>
+                  <label className="form-label">Local</label>
+                  <select className="form-select" value={it.local} onChange={(e) => setItem(idx, 'local', e.target.value)}>
+                    {LOCAIS.map((l) => <option key={l.v} value={l.v}>{l.label}</option>)}
+                  </select>
+                </div>
+                <button className="btn btn-danger btn-sm" style={{ marginBottom: 1 }} onClick={() => removeItem(idx)} disabled={form.itens.length === 1}>✕</button>
+              </div>
+              <div className="form-row" style={{ marginTop: 8 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Origem</label>
+                  <input className="form-input" value={it.origem || ''} onChange={(e) => setItem(idx, 'origem', e.target.value)} placeholder="Ex.: NRI, Itinga…" />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Notas</label>
+                  <input className="form-input" value={it.notas || ''} onChange={(e) => setItem(idx, 'notas', e.target.value)} />
+                </div>
+              </div>
+            </div>
+          ))}
+          <button className="btn btn-outline btn-sm" onClick={addItem}>+ Adicionar item</button>
+
+          <div className="form-group" style={{ marginTop: 14 }}>
+            <label className="form-label">Observações do levantamento</label>
+            <textarea className="form-textarea" value={form.notas} onChange={(e) => setForm((f: any) => ({ ...f, notas: e.target.value }))} rows={2} />
           </div>
         </div>
         <div className="modal-footer">
           {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
-          <span style={{ flex:1 }} />
+          <span style={{ flex: 1 }} />
           <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando...':'Salvar'}</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
         </div>
       </div>
     </div>
@@ -245,33 +428,60 @@ export default function SessionsWeb() {
   useEffect(() => { injectWebCss(); }, []);
 
   const [sessions, setSessions] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
   const [calendars, setCalendars] = useState<any[]>([]);
   const [modal, setModal] = useState<any>(null);
   const [filter, setFilter] = useState('');
-  const [vegetal, setVegetal] = useState<any>({ total: 0, lotes: [] });
-  const [vegModal, setVegModal] = useState<any>(null);
+  const nowYear = new Date().getFullYear();
+  const [period, setPeriod] = useState('all'); // 'all' | 'month' | '<ano>'
+  const [compare, setCompare] = useState(false);
+  const [yearA, setYearA] = useState(nowYear);
+  const [yearB, setYearB] = useState(nowYear - 1);
+  const [estoque, setEstoque] = useState<any>({ atual: null, historico: [] });
+  const [levModal, setLevModal] = useState<any>(null);
 
   // FAB global: ?new=<ts> abre o modal de nova sessão
   const { new: newParam } = useLocalSearchParams<{ new?: string }>();
   useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
-    const [all, st, cals, veg] = await Promise.all([
-      api('/sessions'), api('/sessions/stats'), api('/calendars'), api('/vegetal'),
-    ]).catch(() => [[],[],[],{ total: 0, lotes: [] }]);
-    setSessions(all); setStats(st); setCalendars(cals); setVegetal(veg);
+    const [all, cals, est] = await Promise.all([
+      api('/sessions'), api('/calendars'), api('/levantamentos'),
+    ]).catch(() => [[],[],{ atual: null, historico: [] }]);
+    setSessions(all); setCalendars(cals); setEstoque(est);
   }
 
   useEffect(() => { load(); }, []);
 
-  const shown = sessions.filter(s =>
-    !filter || s.type===filter || s.dirigente?.toLowerCase().includes(filter.toLowerCase()) || s.title?.toLowerCase().includes(filter.toLowerCase())
-  );
+  // Opções de ano: atual + 3 anteriores.
+  const yearOptions = [nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
+  const yearOf = (s: any) => new Date(s.date).getFullYear();
 
-  function onSaved() { setModal(null); setVegModal(null); load(); }
+  // Filtro de tipo/busca (independente de período).
+  const matchesFilter = (s: any) =>
+    !filter || s.type===filter || s.dirigente?.toLowerCase().includes(filter.toLowerCase()) || s.title?.toLowerCase().includes(filter.toLowerCase());
 
-  const totalCopos = (stats?.coposSimples||0) + (stats?.coposDuplos||0)*2 + (stats?.coposCriancas||0);
+  function inPeriod(s: any) {
+    if (period === 'all') return true;
+    const d = new Date(s.date);
+    if (Number.isNaN(d.getTime())) return false;
+    if (period === 'month') return d.getFullYear() === nowYear && d.getMonth() === new Date().getMonth();
+    return d.getFullYear() === Number(period); // ano específico
+  }
+
+  // Tabela: no modo comparar mostra os dois anos; senão segue o período.
+  const shown = (compare
+    ? sessions.filter(s => yearOf(s) === yearA || yearOf(s) === yearB)
+    : sessions.filter(inPeriod)
+  ).filter(matchesFilter);
+
+  function onSaved() { setModal(null); setLevModal(null); load(); }
+
+  // Totais (modo normal sobre `shown`; modo comparar = um conjunto por ano, sempre respeitando tipo/busca).
+  const stats = computeStats(shown);
+  const statsForYear = (y: number) => computeStats(sessions.filter(s => yearOf(s) === y).filter(matchesFilter));
+  const statsA = statsForYear(yearA);
+  const statsB = statsForYear(yearB);
+  const totalCopos = stats.totalCopos;
 
   return (
     <div className="page">
@@ -281,7 +491,29 @@ export default function SessionsWeb() {
       </div>
 
       {/* Stats */}
-      {stats && (
+      {compare ? (
+        <div className="card" style={{ padding: 0, overflow: 'auto', marginBottom: 16 }}>
+          <table className="sess-table">
+            <thead>
+              <tr><th>Métrica</th><th>{yearA}</th><th>{yearB}</th><th>Δ ({yearA}−{yearB})</th></tr>
+            </thead>
+            <tbody>
+              {CMP_METRICS.map(m => {
+                const a = m.get(statsA), b = m.get(statsB), d = a - b;
+                const color = d > 0 ? '#0F5C2E' : d < 0 ? '#b91c1c' : 'var(--muted)';
+                return (
+                  <tr key={m.label}>
+                    <td style={{ fontWeight: 600 }}>{m.label}</td>
+                    <td>{m.fmt(a)}</td>
+                    <td>{m.fmt(b)}</td>
+                    <td style={{ color, fontWeight: 600 }}>{d > 0 ? '+' : ''}{m.fmt(d)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
         <div className="stat-grid">
           <div className="stat-card" style={{ borderLeftColor: '#0F5C2E' }}>
             <div className="stat-label">Total de Sessões</div>
@@ -309,6 +541,26 @@ export default function SessionsWeb() {
           <span><Ionicons name="search-outline" size={16} color="#52606D" /></span>
           <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filtrar por tipo, dirigente..." />
         </div>
+        {compare ? (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <select className="form-select" style={{ width: 'auto' }} value={yearA} onChange={e=>setYearA(Number(e.target.value))} title="Ano A">
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <span style={{ color: 'var(--muted)', fontSize: 13 }}>vs</span>
+            <select className="form-select" style={{ width: 'auto' }} value={yearB} onChange={e=>setYearB(Number(e.target.value))} title="Ano B">
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        ) : (
+          <select className="form-select" style={{ width: 'auto' }} value={period} onChange={e=>setPeriod(e.target.value)} title="Período">
+            <option value="all">Todo o período</option>
+            <option value="month">Este mês</option>
+            {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
+          </select>
+        )}
+        <button className={`btn btn-sm ${compare ? 'btn-primary' : 'btn-outline'}`} onClick={() => setCompare(c => !c)}>
+          {compare ? '✓ Comparando anos' : 'Comparar anos'}
+        </button>
         <div className="view-tabs">
           <button className={`view-tab${!filter?' active':''}`} onClick={()=>setFilter('')}>Todas</button>
           {TYPES.map(t => (
@@ -352,31 +604,74 @@ export default function SessionsWeb() {
         </table>
       </div>
 
-      {/* Estoque de Vegetal */}
+      {/* Estoque de Vegetal — por levantamentos */}
       <div className="section-label" style={{ marginTop: 24 }}>Estoque de Vegetal</div>
-      <div className="card" style={{ marginBottom: 24 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
           <div>
-            <div style={{ fontSize:13, color:'var(--muted)' }}>Total em estoque</div>
-            <div style={{ fontSize:28, fontWeight:700, color:'#0F5C2E' }}>{(vegetal.total || 0).toFixed(1)}L</div>
-          </div>
-          <button className="btn btn-gold btn-sm" onClick={() => setVegModal({})}>+ Novo Lote</button>
-        </div>
-        {vegetal.lotes?.length === 0
-          ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhum lote registrado</div>
-          : vegetal.lotes?.map((l: any) => (
-              <div key={l.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderTop:'1px solid var(--border)', cursor:'pointer' }} onClick={() => setVegModal(l)}>
-                <Ionicons name={l.local==='GELADEIRA'?'snow-outline':'thermometer-outline'} size={18} color={l.local==='GELADEIRA'?'#0369A1':'#D67708'} />
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, fontSize:13 }}>{l.nome}</div>
-                  {l.origem && <div style={{ fontSize:12, color:'var(--muted)' }}>{l.origem}</div>}
-                </div>
-                <div style={{ fontWeight:700, color:'#0F5C2E', fontSize:14 }}>{l.litros}L</div>
-                <span className="pill" style={{ background:'#0F5C2E22', color:'#0F5C2E', fontSize:10 }}>{l.local}</span>
+            <div style={{ fontSize:13, color:'var(--muted)' }}>
+              Total em estoque {estoque.atual ? `(levantamento de ${fmtDate(estoque.atual.data)})` : ''}
+            </div>
+            <div style={{ fontSize:28, fontWeight:700, color:'#0F5C2E' }}>{(estoque.atual?.total || 0).toFixed(1)}L</div>
+            {estoque.atual?.assistente && (
+              <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                <strong>M. Assistente:</strong> {(estoque.atual.assistente.nome || '').toUpperCase()}
+                {estoque.atual.auxiliares?.length ? ` · Aux.: ${estoque.atual.auxiliares.map((x:any)=>titleCaseNome(x.associado?.nome)).filter(Boolean).join(', ')}` : ''}
               </div>
-            ))
+            )}
+          </div>
+          <button className="btn btn-gold btn-sm" onClick={() => setLevModal({})}>+ Novo Levantamento</button>
+        </div>
+        {!estoque.atual
+          ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhum levantamento registrado. Clique em “+ Novo Levantamento” para começar.</div>
+          : (
+            <>
+              {estoque.atual.itens?.length === 0
+                ? <div style={{ color:'var(--muted)', fontSize:13 }}>Levantamento sem itens.</div>
+                : estoque.atual.itens?.map((l: any) => (
+                    <div key={l.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderTop:'1px solid var(--border)' }}>
+                      <Ionicons name={l.local==='GELADEIRA'?'snow-outline':'thermometer-outline'} size={18} color={l.local==='GELADEIRA'?'#0369A1':'#D67708'} />
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:600, fontSize:13 }}>{l.nome}</div>
+                        {l.origem && <div style={{ fontSize:12, color:'var(--muted)' }}>{l.origem}</div>}
+                      </div>
+                      <div style={{ fontWeight:700, color:'#0F5C2E', fontSize:14 }}>{l.litros}L</div>
+                      <span className="pill" style={{ background:'#0F5C2E22', color:'#0F5C2E', fontSize:10 }}>{l.local}</span>
+                    </div>
+                  ))
+              }
+              <div style={{ marginTop:12, textAlign:'right' }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setLevModal(estoque.atual)}>Editar levantamento atual</button>
+              </div>
+            </>
+          )
         }
       </div>
+
+      {/* Histórico de levantamentos */}
+      {estoque.historico?.length > 0 && (
+        <>
+          <div className="section-label">Histórico de levantamentos</div>
+          <div className="card" style={{ padding: 0, overflow: 'auto', marginBottom: 24 }}>
+            <table className="sess-table">
+              <thead>
+                <tr><th>Data</th><th>M. Assistente</th><th>Auxiliares</th><th>Itens</th><th>Total</th></tr>
+              </thead>
+              <tbody>
+                {estoque.historico.map((l: any) => (
+                  <tr key={l.id} onClick={() => setLevModal(l)}>
+                    <td style={{ whiteSpace:'nowrap' }}>{fmtDate(l.data)}</td>
+                    <td>{l.assistente ? (l.assistente.nome || '').toUpperCase() : '—'}</td>
+                    <td>{l.auxiliares?.map((x:any)=>titleCaseNome(x.associado?.nome)).filter(Boolean).join(', ') || '—'}</td>
+                    <td>{l.itens?.length || 0}</td>
+                    <td style={{ fontWeight:700, color:'#0F5C2E' }}>{(l.total||0).toFixed(1)}L</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {modal && (
         <SessionModal
@@ -386,7 +681,7 @@ export default function SessionsWeb() {
           onSaved={onSaved}
         />
       )}
-      {vegModal !== null && <VegetalModal lote={vegModal} onClose={() => setVegModal(null)} onSaved={onSaved} />}
+      {levModal !== null && <LevantamentoModal lev={levModal?.id ? levModal : null} onClose={() => setLevModal(null)} onSaved={onSaved} />}
     </div>
   );
 }

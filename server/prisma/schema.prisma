@@ -379,6 +379,56 @@ model Associado {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Vínculos nos levantamentos de estoque.
+  levantamentosAssist Levantamento[]         @relation("LevantamentoAssistente")
+  auxiliarEm          LevantamentoAuxiliar[]
+
   @@index([nome])
   @@index([status])
+}
+
+// ───────────────────────── Levantamentos de estoque ─────────────────────────
+// Cada levantamento é uma contagem periódica do estoque de vegetal, conduzida por um
+// M. Assistente (associado grau QM) e auxiliares, com vários itens (lotes). O total em
+// estoque exibido é o do ÚLTIMO levantamento (snapshot atual); os anteriores são histórico.
+model Levantamento {
+  id           String   @id @default(cuid())
+  data         DateTime
+  // M. Assistente responsável — deve ser associado de grau QM (validado na rota).
+  assistenteId String?
+  assistente   Associado? @relation("LevantamentoAssistente", fields: [assistenteId], references: [id])
+  notas        String?
+  itens        LevantamentoItem[]
+  auxiliares   LevantamentoAuxiliar[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([data])
+}
+
+// Item (lote) dentro de um levantamento. Substitui o antigo VegetalLote plano.
+model LevantamentoItem {
+  id             String       @id @default(cuid())
+  levantamentoId String
+  levantamento   Levantamento @relation(fields: [levantamentoId], references: [id], onDelete: Cascade)
+  nome           String
+  origem         String?
+  litros         Float
+  // GELADEIRA | FORA | OUTRO
+  local          String       @default("FORA")
+  notas          String?
+
+  @@index([levantamentoId])
+}
+
+// Auxiliares (associados) vinculados a um levantamento.
+model LevantamentoAuxiliar {
+  id             String       @id @default(cuid())
+  levantamentoId String
+  levantamento   Levantamento @relation(fields: [levantamentoId], references: [id], onDelete: Cascade)
+  associadoId    String
+  associado      Associado    @relation(fields: [associadoId], references: [id])
+
+  @@unique([levantamentoId, associadoId])
+  @@index([levantamentoId])
 }

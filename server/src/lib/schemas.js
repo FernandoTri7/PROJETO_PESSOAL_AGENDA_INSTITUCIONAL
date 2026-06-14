@@ -225,3 +225,21 @@ export const vegetalCreateSchema = z.object({
   notas: optText,
 });
 export const vegetalUpdateSchema = vegetalCreateSchema.partial();
+
+// ── Levantamentos de estoque ──
+const levantamentoItemSchema = z.object({
+  nome: z.string().trim().min(1, 'nome do item é obrigatório'),
+  origem: optText,
+  litros: numLike,
+  local: vegetalLocal.optional(),
+  notas: optText,
+});
+
+export const levantamentoCreateSchema = z.object({
+  data: dateLike,
+  assistenteId: optText,
+  auxiliarIds: z.array(z.string().min(1)).optional(),
+  notas: optText,
+  itens: z.array(levantamentoItemSchema).optional(),
+});
+export const levantamentoUpdateSchema = levantamentoCreateSchema.partial();
