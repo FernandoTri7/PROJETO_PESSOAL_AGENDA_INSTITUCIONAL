@@ -13,11 +13,13 @@ export type Prefs = {
   showMoon: boolean;
   // Mostra os feriados nacionais na agenda.
   showHolidays: boolean;
+  // Dias para ativar uma tarefa rápida antes de ela ir para a lixeira (0 = nunca expira).
+  taskActivationDays: number;
 };
 
 export type Me = { id: string; name: string; email: string; role: string; phone?: string | null };
 
-const DEFAULT: Prefs = { notificationsEnabled: false, useInstitutional: true, hiddenCalendarIds: [], defaultViews: {}, showMoon: false, showHolidays: false };
+const DEFAULT: Prefs = { notificationsEnabled: false, useInstitutional: true, hiddenCalendarIds: [], defaultViews: {}, showMoon: false, showHolidays: false, taskActivationDays: 10 };
 
 let cache: Prefs = { ...DEFAULT };
 let me: Me | null = null;

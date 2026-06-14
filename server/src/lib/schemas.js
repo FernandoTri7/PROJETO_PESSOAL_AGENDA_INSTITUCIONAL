@@ -53,6 +53,8 @@ export const prefsSchema = z.object({
   showMoon: z.boolean().optional(),
   // Mostra os feriados nacionais na agenda.
   showHolidays: z.boolean().optional(),
+  // Dias para ativar uma tarefa rápida antes de ela ir para a lixeira automaticamente.
+  taskActivationDays: numLike.optional(),
 }).partial();
 
 // ── Agendas e membros ──
@@ -142,8 +144,23 @@ export const taskCreateSchema = z.object({
   dueDate: dateLike.nullish(),
   priority: taskPriority.optional(),
   done: z.boolean().optional(),
+  // Tarefa provisória (adição rápida) entra com activated=false até ser ativada.
+  activated: z.boolean().optional(),
+  // Grupo (seção) e responsável opcionais; null limpa o campo.
+  groupId: optText,
+  assigneeId: optText,
+  attachments: z.array(attachmentSchema).optional(),
 });
 export const taskUpdateSchema = taskCreateSchema.partial();
+
+export const taskGroupCreateSchema = z.object({
+  calendarId: z.string().min(1, 'calendarId é obrigatório'),
+  name: z.string().trim().min(1, 'nome é obrigatório'),
+  order: numLike.optional(),
+});
+export const taskGroupUpdateSchema = z
+  .object({ name: z.string().trim().min(1).optional(), order: numLike.optional() })
+  .refine((d) => d.name !== undefined || d.order !== undefined, { message: 'informe name ou order' });
 
 // ── Aniversários ──
 export const birthdayCreateSchema = z.object({

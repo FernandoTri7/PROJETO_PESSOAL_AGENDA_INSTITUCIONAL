@@ -70,6 +70,13 @@ html,body,#root{height:100%;font-family:'Inter',system-ui,sans-serif;background:
 @keyframes sdFade{from{opacity:0}to{opacity:1}}
 @keyframes sdRise{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
 
+/* Abas de agenda (navegação por calendário) — estilo sublinhado, distinto do toggle de status */
+.cal-tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--border)}
+.cal-tab{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;font-family:inherit}
+.cal-tab:hover{color:var(--navy)}
+.cal-tab.active{color:var(--navy);border-bottom-color:var(--gold)}
+.cal-tab-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+
 /* View toggle */
 .view-tabs{display:flex;gap:2px;background:#ede9e0;border-radius:8px;padding:3px}
 .view-tab{padding:6px 14px;border-radius:6px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;font-family:inherit}

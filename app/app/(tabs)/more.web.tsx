@@ -240,6 +240,10 @@ export default function MoreWeb() {
   async function toggleHolidays(on: boolean) {
     setPrefs(await savePrefs({ showHolidays: on }));
   }
+  async function setActivationDays(n: number) {
+    const days = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 7;
+    setPrefs(await savePrefs({ taskActivationDays: days }));
+  }
 
   async function logout() {
     await clearToken();
@@ -290,6 +294,15 @@ export default function MoreWeb() {
             <div style={{ fontSize:12, color:'var(--muted)' }}>Exibe os feriados nacionais do Brasil na visão mensal da agenda.</div>
           </div>
         </label>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0 2px', borderTop:'1px solid var(--border)' }}>
+          <input type="number" min={0} value={prefs.taskActivationDays}
+            onChange={e => setActivationDays(Number(e.target.value))}
+            className="form-input" style={{ width:70 }} />
+          <div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Ativar tarefa rápida em (dias) ✅</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>Notas da adição rápida ficam pendentes de ativação; se não ativadas neste prazo (padrão 10), vão para a lixeira e você é avisado. Use 0 para nunca expirar.</div>
+          </div>
+        </div>
         <div style={{ padding:'10px 0 2px', borderTop:'1px solid var(--border)' }}>
           <div style={{ fontWeight:600, fontSize:14, marginBottom:4 }}>Conta Google (Drive e Meet)</div>
           {googleMsg && <div className="form-hint" style={{ marginBottom:6 }}>{googleMsg}</div>}
