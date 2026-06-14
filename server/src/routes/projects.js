@@ -21,6 +21,8 @@ function memberView(m) {
     role: m.role,
     active: m.active,
     user: m.user ? { id: m.user.id, name: m.user.name, email: m.user.email, kind: m.user.kind } : undefined,
+    associadoId: m.user?.associadoId || null,
+    associado: m.user?.associado || null,
   };
 }
 
@@ -87,9 +89,14 @@ projectsRouter.post('/:key/members', requireProjectElevated, validateBody(projec
 // PATCH /api/projects/:key/members/:userId — muda papel e/ou ativa/desativa (elevado).
 projectsRouter.patch('/:key/members/:userId', requireProjectElevated, validateBody(projectMemberUpdateSchema), async (req, res) => {
   const { userId } = req.params;
-  let m;
-  if (req.body.role !== undefined) m = await svc.setMemberRole(req.targetProject, userId, req.body.role);
-  if (req.body.active !== undefined) m = await svc.setMemberActive(req.targetProject, userId, req.body.active);
+  if (req.body.role !== undefined) await svc.setMemberRole(req.targetProject, userId, req.body.role);
+  if (req.body.active !== undefined) await svc.setMemberActive(req.targetProject, userId, req.body.active);
+  if (req.body.associadoId !== undefined) await svc.setMemberAssociado(userId, req.body.associadoId || null);
+  // Recarrega o vínculo já com user+associado para devolver a visão completa.
+  const m = await prisma.membership.findFirst({
+    where: { userId, projectId: req.targetProject.id },
+    include: { user: { select: { id: true, name: true, email: true, kind: true, associadoId: true, associado: { select: { id: true, nome: true, grau: true } } } } },
+  });
   res.json(memberView(m));
 });
 

@@ -22,6 +22,9 @@ model User {
   active       Boolean  @default(true)
   // Preferências do usuário em JSON. Ex: {"notificationsEnabled":true,"useInstitutional":false}
   prefs        String?
+  // Vínculo opcional com o cadastro de Associado (identidade institucional; o grau vem de lá).
+  associadoId  String?    @unique
+  associado    Associado? @relation("UserAssociado", fields: [associadoId], references: [id])
   createdAt    DateTime @default(now())
 
   memberships        CalendarMember[]
@@ -382,6 +385,8 @@ model Associado {
   // Vínculos nos levantamentos de estoque.
   levantamentosAssist Levantamento[]         @relation("LevantamentoAssistente")
   auxiliarEm          LevantamentoAuxiliar[]
+  // Conta de login vinculada a este associado (no máximo uma).
+  user                User?                  @relation("UserAssociado")
 
   @@index([nome])
   @@index([status])

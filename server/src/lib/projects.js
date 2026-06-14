@@ -52,9 +52,31 @@ export async function getProjectByKey(key) {
 export async function listMembers(projectId) {
   return prisma.membership.findMany({
     where: { projectId },
-    include: { user: { select: { id: true, name: true, email: true, kind: true } } },
+    include: {
+      user: {
+        select: {
+          id: true, name: true, email: true, kind: true, associadoId: true,
+          associado: { select: { id: true, nome: true, grau: true } },
+        },
+      },
+    },
     orderBy: { joinedAt: 'asc' },
   });
+}
+
+// Vincula (ou desvincula, com associadoId=null) uma conta de login a um Associado.
+// Um Associado só pode estar ligado a um usuário (User.associadoId é @unique).
+export async function setMemberAssociado(userId, associadoId) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new DomainError(404, 'Usuário não encontrado');
+  if (associadoId) {
+    const assoc = await prisma.associado.findUnique({ where: { id: associadoId }, include: { user: true } });
+    if (!assoc) throw new DomainError(404, 'Associado não encontrado');
+    if (assoc.user && assoc.user.id !== userId) {
+      throw new DomainError(409, 'Este associado já está vinculado a outro usuário.');
+    }
+  }
+  return prisma.user.update({ where: { id: userId }, data: { associadoId: associadoId || null } });
 }
 
 // Habilita um usuário existente (por e-mail) no projeto, com um papel (≠ GESTOR).

@@ -3,6 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { injectWebCss, fmtDate } from '../../src/webCss';
+import { titleCaseNome } from '../../src/format';
 
 const TYPES = [
   { key: 'ESCALA',           label: 'Escala' },
@@ -24,16 +25,6 @@ const TYPE_COLORS: Record<string,string> = {
 
 function typeLabel(k: string) { return TYPES.find(t=>t.key===k)?.label ?? k; }
 function typeColor(k: string) { return TYPE_COLORS[k] ?? '#6b7280'; }
-
-// Conectores que permanecem minúsculos em nomes próprios (pt-BR).
-const NAME_CONNECTORS = new Set(['de','da','do','das','dos','e','di','du','del','la','das','dello']);
-// Formata um nome em caixa Alta-e-baixa (Title Case), mantendo conectores minúsculos.
-function titleCaseNome(s?: string | null): string {
-  if (!s) return '';
-  return String(s).trim().toLowerCase().split(/\s+/).map((w, i) =>
-    i > 0 && NAME_CONNECTORS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)
-  ).join(' ');
-}
 
 // Nome de exibição do M. Assistente de um levantamento (base ou manual de outro núcleo), em MAIÚSCULO.
 function assistDisplay(l: any): string {

@@ -5,14 +5,70 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { getMe, loadPrefs } from './prefs';
+import { titleCaseNome } from './format';
 
 type Project = { key: string; name: string; role: string; isOwner: boolean };
+type Associado = { id: string; nome: string; grau?: string | null };
 type Member = {
   userId: string;
   role: string;
   active: boolean;
   user?: { id: string; name: string; email: string; kind: string };
+  associadoId?: string | null;
+  associado?: Associado | null;
 };
+
+// Busca/seleção de um Associado da base (somente leitura do cadastro). Usado para vincular ao usuário.
+function AssociadoLink({ value, onPick, disabled }: { value?: Associado | null; onPick: (a: Associado | null) => void; disabled?: boolean }) {
+  const [q, setQ] = useState('');
+  const [opts, setOpts] = useState<Associado[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const t = setTimeout(async () => {
+      const params = new URLSearchParams({ ativo: 'true', pageSize: '20' });
+      if (q.trim()) params.set('q', q.trim());
+      try { const list = await api(`/associados?${params.toString()}`); if (alive) setOpts(list || []); }
+      catch { if (alive) setOpts([]); }
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q, open]);
+
+  if (value) {
+    return (
+      <span className="pill" style={{ background: '#0F5C2E18', color: '#0F5C2E', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+        {titleCaseNome(value.nome)}{value.grau ? ` · ${value.grau}` : ''}
+        {!disabled && <span style={{ cursor: 'pointer', fontWeight: 700 }} title="Desvincular" onClick={() => onPick(null)}>✕</span>}
+      </span>
+    );
+  }
+  return (
+    <div style={{ position: 'relative', width: 200 }}>
+      <input
+        className="form-input" style={{ height: 34, padding: '4px 8px' }}
+        value={q} placeholder="Vincular associado…" disabled={disabled}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && opts.length > 0 && (
+        <div style={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
+          {opts.map((a) => (
+            <div key={a.id} onMouseDown={() => { onPick(a); setQ(''); setOpen(false); }}
+                 style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}
+                 onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+                 onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}>
+              <span>{titleCaseNome(a.nome)}</span>
+              {a.grau && <span style={{ color: 'var(--muted)', fontSize: 11 }}>{a.grau}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ASSIGNABLE = ['VISITANTE', 'MEMBRO', 'ADMIN']; // GESTOR só por transferência
 const ROLE_LABEL: Record<string, string> = {
@@ -77,6 +133,10 @@ export function AccessAdmin() {
     const active = !m.active;
     run(() => api(`/projects/${selKey}/members/${m.userId}`, { method: 'PATCH', body: { active } }),
       `${m.user?.email} ${active ? 'habilitado' : 'desabilitado'} no projeto.`);
+  }
+  function setAssociado(m: Member, a: Associado | null) {
+    run(() => api(`/projects/${selKey}/members/${m.userId}`, { method: 'PATCH', body: { associadoId: a ? a.id : null } }),
+      a ? `${m.user?.email} vinculado ao associado ${titleCaseNome(a.nome)}.` : `Vínculo de associado removido de ${m.user?.email}.`);
   }
   function addMember() {
     if (!addEmail.trim()) { setError('Informe o e-mail da pessoa.'); return; }
@@ -148,6 +208,8 @@ export function AccessAdmin() {
                       {m.user?.email} · {KIND_LABEL[m.user?.kind || ''] || m.user?.kind}
                     </div>
                   </div>
+
+                  <AssociadoLink value={m.associado} disabled={loading} onPick={(a) => setAssociado(m, a)} />
 
                   {isOwner
                     ? <span className="pill" style={{ background: '#C8901A22', color: '#9A6B00', fontSize: 11 }}>Gestor</span>

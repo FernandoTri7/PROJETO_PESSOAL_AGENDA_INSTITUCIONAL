@@ -96,8 +96,10 @@ export const projectMemberAddSchema = z.object({
 });
 
 export const projectMemberUpdateSchema = z
-  .object({ role: assignableProjectRole.optional(), active: z.boolean().optional() })
-  .refine((d) => d.role !== undefined || d.active !== undefined, { message: 'informe role ou active' });
+  .object({ role: assignableProjectRole.optional(), active: z.boolean().optional(), associadoId: optText })
+  .refine((d) => d.role !== undefined || d.active !== undefined || d.associadoId !== undefined, {
+    message: 'informe role, active ou associadoId',
+  });
 
 export const transferOwnershipSchema = z
   .object({ userId: z.string().min(1).optional(), email: z.string().trim().email().optional() })
