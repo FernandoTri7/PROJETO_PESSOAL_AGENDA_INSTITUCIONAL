@@ -47,3 +47,18 @@ export async function api(path: string, options: { method?: string; body?: any }
   }
   return data;
 }
+
+// Envia um Blob cru (ex.: áudio gravado) com o Content-Type do próprio blob. Retorna o JSON da resposta.
+export async function apiUpload(path: string, blob: Blob) {
+  const res = await fetch(`${API_URL}/api${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': blob.type || 'application/octet-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: blob,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+  return data;
+}

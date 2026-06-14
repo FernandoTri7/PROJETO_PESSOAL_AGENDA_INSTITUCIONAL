@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../../src/api';
+import { api, apiUpload, API_URL } from '../../src/api';
 import { pickDriveFile } from '../../src/googlePicker';
 import { loadPrefs, getPrefs } from '../../src/prefs';
 import { injectWebCss, fmtDate } from '../../src/webCss';
@@ -76,6 +76,57 @@ function TaskModal({ task, calendars, groups, defaultCalendarId, onClose, onSave
       const file = await pickDriveFile(t.accessToken, t.apiKey);
       if (file) setForm((f: any) => ({ ...f, attachments: [...(f.attachments || []), { name: file.name, url: file.url, provider: 'drive', mimeType: file.mimeType }] }));
     } catch (e: any) { alert(e.message + '\nConecte sua conta Google em Mais → Preferências.'); }
+  }
+
+  // ── Áudio: gravar (MediaRecorder), enviar como anexo e transcrever (Whisper) ──
+  const [recording, setRecording] = useState(false);
+  const [recSecs, setRecSecs] = useState(0);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [transcribingUrl, setTranscribingUrl] = useState<string | null>(null);
+  const recRef = useRef<any>(null);
+  const chunksRef = useRef<any[]>([]);
+  const timerRef = useRef<any>(null);
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e: any) => { if (e.data?.size) chunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        setUploadingAudio(true);
+        try {
+          const att = await apiUpload('/audio/upload', blob);
+          setForm((f: any) => ({ ...f, attachments: [...(f.attachments || []), att] }));
+        } catch (e: any) { alert('Falha ao enviar áudio: ' + e.message); }
+        finally { setUploadingAudio(false); }
+      };
+      mr.start();
+      recRef.current = mr;
+      setRecSecs(0); setRecording(true);
+      timerRef.current = setInterval(() => setRecSecs((s) => s + 1), 1000);
+    } catch (e: any) { alert('Não foi possível acessar o microfone: ' + e.message); }
+  }
+  function stopRecording() {
+    try { recRef.current?.stop(); } catch { /* ignora */ }
+    if (timerRef.current) clearInterval(timerRef.current);
+    setRecording(false);
+  }
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  async function transcribe(a: any) {
+    setTranscribingUrl(a.url);
+    try {
+      const r = await api('/audio/transcribe', { method: 'POST', body: { url: a.url } });
+      if (!r.configured) { alert(r.message || 'Transcrição não configurada no servidor.'); return; }
+      const text = (r.text || '').trim();
+      if (!text) { alert('Não foi possível transcrever (áudio sem fala reconhecida).'); return; }
+      // Anexa o texto transcrito à descrição da tarefa (editável antes de salvar).
+      setForm((f: any) => ({ ...f, description: f.description ? `${f.description}\n\n[Transcrição] ${text}` : `[Transcrição] ${text}` }));
+    } catch (e: any) { alert('Falha na transcrição: ' + e.message); }
+    finally { setTranscribingUrl(null); }
   }
 
   async function save() {
@@ -167,23 +218,41 @@ function TaskModal({ task, calendars, groups, defaultCalendarId, onClose, onSave
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAttachment(); } }} />
               <button type="button" className="btn btn-outline btn-sm" onClick={addAttachment}>Adicionar</button>
             </div>
-            <div style={{ marginTop: 8 }}>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button type="button" className="btn btn-outline btn-sm" onClick={attachFromDrive}>
                 <Ionicons name="logo-google" size={13} color="#52606D" /> Anexar do Drive
               </button>
+              {!recording
+                ? <button type="button" className="btn btn-outline btn-sm" onClick={startRecording} disabled={uploadingAudio}>
+                    <Ionicons name="mic-outline" size={13} color="#52606D" /> {uploadingAudio ? 'Enviando áudio...' : 'Gravar áudio'}
+                  </button>
+                : <button type="button" className="btn btn-danger btn-sm" onClick={stopRecording}>
+                    <Ionicons name="stop-circle-outline" size={13} color="#fff" /> Parar ({recSecs}s)
+                  </button>}
             </div>
             {form.attachments?.length > 0 && (
-              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {form.attachments.map((a: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                    <Ionicons name={a.provider === 'drive' ? 'logo-google' : 'attach-outline'} size={14} color="#52606D" />
-                    <a href={a.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</a>
-                    <span style={{ cursor: 'pointer', color: 'var(--muted)' }} onClick={() => removeAttachment(i)}>✕</span>
-                  </div>
+                  a.provider === 'audio' ? (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, flexWrap: 'wrap' }}>
+                      <Ionicons name="mic" size={14} color="#52606D" />
+                      <audio controls src={a.url?.startsWith('http') ? a.url : API_URL + a.url} style={{ height: 32, flex: 1, minWidth: 180 }} />
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => transcribe(a)} disabled={transcribingUrl === a.url}>
+                        {transcribingUrl === a.url ? 'Transcrevendo...' : 'Transcrever'}
+                      </button>
+                      <span style={{ cursor: 'pointer', color: 'var(--muted)' }} onClick={() => removeAttachment(i)}>✕</span>
+                    </div>
+                  ) : (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                      <Ionicons name={a.provider === 'drive' ? 'logo-google' : 'attach-outline'} size={14} color="#52606D" />
+                      <a href={a.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</a>
+                      <span style={{ cursor: 'pointer', color: 'var(--muted)' }} onClick={() => removeAttachment(i)}>✕</span>
+                    </div>
+                  )
                 ))}
               </div>
             )}
-            <div className="form-hint">Cole um link manual ou use "Anexar do Drive" (requer conta Google conectada).</div>
+            <div className="form-hint">Cole um link, use "Anexar do Drive", ou grave um áudio e clique em "Transcrever" para virar texto na descrição.</div>
           </div>
         </div>
         <div className="modal-footer">

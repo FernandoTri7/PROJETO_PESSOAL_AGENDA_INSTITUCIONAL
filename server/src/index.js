@@ -11,6 +11,7 @@ import { rsvpRouter } from './routes/rsvp.js';
 import { googleRouter } from './routes/google.js';
 import { tasksRouter } from './routes/tasks.js';
 import { taskGroupsRouter } from './routes/taskGroups.js';
+import { audioRouter, UPLOADS_DIR } from './routes/audio.js';
 import { birthdaysRouter } from './routes/birthdays.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { vegetalRouter } from './routes/vegetal.js';
@@ -51,6 +52,9 @@ app.use(httpLogger);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// Arquivos enviados (áudio das tarefas) — servidos publicamente; nomes são UUID não-adivinháveis.
+app.use('/uploads', express.static(UPLOADS_DIR));
+
 app.use('/api/auth', authRouter);
 // Rota pública: resposta de convite (RSVP) via link do e-mail, sem login.
 app.use('/api/rsvp', rsvpRouter);
@@ -62,6 +66,7 @@ app.use('/api/events', authMiddleware, eventsRouter);
 app.use('/api/categories', authMiddleware, categoriesRouter);
 app.use('/api/tasks', authMiddleware, tasksRouter);
 app.use('/api/task-groups', authMiddleware, taskGroupsRouter);
+app.use('/api/audio', authMiddleware, audioRouter);
 app.use('/api/birthdays', authMiddleware, birthdaysRouter);
 app.use('/api/sessions', authMiddleware, sessionsRouter);
 app.use('/api/vegetal', authMiddleware, vegetalRouter);
