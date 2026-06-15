@@ -102,8 +102,9 @@ const CMP_METRICS = [
 
 // ─── Session Form Modal ──────────────────────────────────────────────────────
 
-function SessionModal({ sess, calendars, anuais, onClose, onSaved }: any) {
+function SessionModal({ sess, calendars, anuais, tipos, onClose, onSaved }: any) {
   const isNew = !sess?.id;
+  const tipoOpts = (tipos && tipos.length) ? tipos : TYPES;
   const today = new Date().toISOString().slice(0,10);
   const parts = sess?.participations;
   const [form, setForm] = useState<any>({
@@ -211,7 +212,7 @@ function SessionModal({ sess, calendars, anuais, onClose, onSaved }: any) {
             <div className="form-group">
               <label className="form-label">Tipo</label>
               <select className="form-select" value={form.type} onChange={setTipo}>
-                {TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                {tipoOpts.map((t:any) => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </div>
           </div>
@@ -656,17 +657,23 @@ export default function SessionsWeb() {
   const [estoque, setEstoque] = useState<any>({ atual: null, historico: [] });
   const [levModal, setLevModal] = useState<any>(null);
   const [anuais, setAnuais] = useState<any[]>([]);
+  const [tipos, setTipos] = useState<any[]>([]);
 
   // FAB global: ?new=<ts> abre o modal de nova sessão
   const { new: newParam } = useLocalSearchParams<{ new?: string }>();
   useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
-    const [all, cals, est, an] = await Promise.all([
-      api('/sessions'), api('/calendars'), api('/levantamentos'), api('/sessoes-anuais'),
-    ]).catch(() => [[],[],{ atual: null, historico: [] },[]]);
-    setSessions(all); setCalendars(cals); setEstoque(est); setAnuais(an || []);
+    const [all, cals, est, an, tp] = await Promise.all([
+      api('/sessions'), api('/calendars'), api('/levantamentos'), api('/sessoes-anuais'), api('/tipos-sessao'),
+    ]).catch(() => [[],[],{ atual: null, historico: [] },[],[]]);
+    setSessions(all); setCalendars(cals); setEstoque(est); setAnuais(an || []); setTipos(tp || []);
   }
+
+  // Lista efetiva de tipos: do cadastro quando houver; senão o fallback fixo (TYPES).
+  const tipoList = tipos.length ? tipos : TYPES.map((t) => ({ key: t.key, label: t.label, cor: TYPE_COLORS[t.key] }));
+  const tLabel = (k: string) => tipoList.find((t: any) => t.key === k)?.label ?? typeLabel(k);
+  const tColor = (k: string) => tipoList.find((t: any) => t.key === k)?.cor ?? typeColor(k);
 
   useEffect(() => { load(); }, []);
 
@@ -781,7 +788,7 @@ export default function SessionsWeb() {
         </button>
         <div className="view-tabs">
           <button className={`view-tab${!filter?' active':''}`} onClick={()=>setFilter('')}>Todas</button>
-          {TYPES.map(t => (
+          {tipoList.map((t:any) => (
             <button key={t.key} className={`view-tab${filter===t.key?' active':''}`} onClick={()=>setFilter(t.key)}>{t.label}</button>
           ))}
         </div>
@@ -804,8 +811,8 @@ export default function SessionsWeb() {
               <tr key={s.id} onClick={() => setModal(s)}>
                 <td style={{ whiteSpace:'nowrap' }}>{fmtDate(s.date)}</td>
                 <td>
-                  <span className="pill" style={{ background: typeColor(s.type)+'22', color: typeColor(s.type) }}>
-                    {typeLabel(s.type)}
+                  <span className="pill" style={{ background: tColor(s.type)+'22', color: tColor(s.type) }}>
+                    {tLabel(s.type)}
                   </span>
                 </td>
                 <td>{s.title||'—'}</td>
@@ -900,6 +907,7 @@ export default function SessionsWeb() {
           sess={modal.id ? modal : null}
           calendars={calendars}
           anuais={anuais}
+          tipos={tipoList}
           onClose={() => setModal(null)}
           onSaved={onSaved}
         />

@@ -26,10 +26,7 @@ const categoryScope = z.enum(['PESSOAL', 'FAMILIAR', 'INSTITUCIONAL', 'TODAS']);
 const memberRole = z.enum(['OWNER', 'EDITOR', 'VIEWER']);
 const taskPriority = z.enum(['BAIXA', 'MEDIA', 'ALTA']);
 const vegetalLocal = z.enum(['GELADEIRA', 'FORA', 'OUTRO']);
-const sessionType = z.enum([
-  'ESCALA', 'ESCALA_ANUAL', 'INSTRUTIVA', 'EXTRA', 'ADVENTICIOS',
-  'DIRECAO', 'QUADRO_DE_MESTRES', 'COMEMORATIVA', 'OUTRA',
-]);
+// (Tipo de sessão agora é cadastro configurável — TipoSessao — validado como string livre.)
 
 // ── Auth ──
 export const registerSchema = z.object({
@@ -186,7 +183,8 @@ const pessoaSessaoSchema = z.object({
 export const sessionCreateSchema = z.object({
   calendarId: z.string().min(1, 'calendarId é obrigatório'),
   date: dateLike,
-  type: sessionType.optional(),
+  // Tipo agora vem do cadastro TipoSessao (string livre); mantém compat com os keys antigos.
+  type: z.string().trim().min(1).optional(),
   title: optText,
   dirigente: optText,
   assistente: optText,
@@ -250,6 +248,16 @@ export const vegetalCreateSchema = z.object({
   notas: optText,
 });
 export const vegetalUpdateSchema = vegetalCreateSchema.partial();
+
+// ── Tipos de sessão (cadastro configurável) ──
+export const tipoSessaoCreateSchema = z.object({
+  key: z.string().trim().regex(/^[A-Z][A-Z0-9_]*$/, 'key inválida (MAIÚSCULAS, sem espaços; ex.: "ESCALA")').optional(),
+  label: z.string().trim().min(1, 'nome é obrigatório'),
+  cor: optText,
+  ordem: numLike.optional(),
+  ativo: z.boolean().optional(),
+});
+export const tipoSessaoUpdateSchema = tipoSessaoCreateSchema.partial();
 
 // ── Sessões anuais (cadastro recorrente) ──
 const sessaoAnualTipo = z.enum(['COMEMORATIVA', 'EXTRA']);

@@ -445,6 +445,19 @@ model Levantamento {
   @@index([data])
 }
 
+// Cadastro de Tipos de Sessão (configurável). `key` é o código gravado em SessionRecord.type.
+// Alguns keys têm comportamento especial no app (ESCALA/EXTRA = transmissão; COMEMORATIVA = título da lista).
+model TipoSessao {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  cor       String?
+  ordem     Int      @default(0)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // Cadastro de Sessões Anuais (recorrentes): sugeridas no Título da sessão por tipo.
 // Ex.: comemorativas (Dia de Reis, Aniversário do Mestre…) e extras (Passagem do Ano).
 model SessaoAnual {

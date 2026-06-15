@@ -256,6 +256,70 @@ function SessaoAnualModal({ sa, onClose, onSaved }: any) {
   );
 }
 
+// Cadastro de Tipo de Sessão — label, cor e ordem (key derivada do nome quando nova).
+function TipoSessaoModal({ tipo, onClose, onSaved }: any) {
+  const isNew = !tipo?.id;
+  const [form, setForm] = useState<any>({ label: '', cor: '#0F5C2E', ordem: '', ...(tipo || {}) });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  function set(k: string) { return (e: any) => setForm((f:any) => ({ ...f, [k]: e.target.value })); }
+
+  async function save() {
+    if (!form.label.trim()) { setError('Nome é obrigatório'); return; }
+    setSaving(true); setError('');
+    try {
+      const body: any = { label: form.label.trim(), cor: form.cor || null, ordem: form.ordem===''?undefined:Number(form.ordem) };
+      if (isNew) await api('/tipos-sessao', { method: 'POST', body });
+      else       await api(`/tipos-sessao/${tipo.id}`, { method: 'PUT', body });
+      onSaved();
+    } catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+  async function remove() {
+    if (!confirm('Excluir este tipo de sessão? Sessões já gravadas mantêm o tipo, mas ele some da lista.')) return;
+    await api(`/tipos-sessao/${tipo.id}`, { method: 'DELETE' });
+    onSaved();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2 className="modal-title">{isNew ? 'Novo Tipo de Sessão' : 'Editar Tipo de Sessão'}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="form-error">{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Nome *</label>
+            <input className="form-input" value={form.label} onChange={set('label')} placeholder="Ex.: Instrutiva" autoFocus />
+          </div>
+          <div className="form-row">
+            <div className="form-group" style={{ width: 110 }}>
+              <label className="form-label">Cor</label>
+              <input className="form-input" type="color" value={form.cor||'#0F5C2E'} onChange={set('cor')} style={{ height:40, padding:4 }} />
+            </div>
+            <div className="form-group" style={{ width: 110 }}>
+              <label className="form-label">Ordem</label>
+              <input className="form-input" type="number" value={form.ordem??''} onChange={set('ordem')} />
+            </div>
+            {!isNew && <div className="form-group" style={{ flex:1 }}>
+              <label className="form-label">Código</label>
+              <input className="form-input" value={form.key||''} disabled style={{ opacity:.7 }} />
+            </div>}
+          </div>
+        </div>
+        <div className="modal-footer">
+          {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
+          <span style={{ flex:1 }} />
+          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando...':'Salvar'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Seção recolhível (accordion). Começa fechada por padrão para a página não ficar extensa.
 function Section({ title, defaultOpen = false, children }: any) {
   const [open, setOpen] = useState<boolean>(!!defaultOpen);
@@ -281,13 +345,15 @@ export default function MoreWeb() {
   const [catModal, setCatModal] = useState<any>(null);
   const [anuais, setAnuais] = useState<any[]>([]);
   const [saModal, setSaModal] = useState<any>(null);
+  const [tiposSessao, setTiposSessao] = useState<any[]>([]);
+  const [tipoModal, setTipoModal] = useState<any>(null);
   const [prefs, setPrefs] = useState(getPrefs());
   const [gstatus, setGstatus] = useState<any>({ configured: false, connected: false, email: null });
   const [googleMsg, setGoogleMsg] = useState('');
 
   async function load() {
-    const [cals, categories, an] = await Promise.all([api('/calendars'), api('/categories?all=1'), api('/sessoes-anuais?all=1')]).catch(()=>[[],[],[]]);
-    setCalendars(cals); setCats(categories); setAnuais(an || []);
+    const [cals, categories, an, tp] = await Promise.all([api('/calendars'), api('/categories?all=1'), api('/sessoes-anuais?all=1'), api('/tipos-sessao?all=1')]).catch(()=>[[],[],[],[]]);
+    setCalendars(cals); setCats(categories); setAnuais(an || []); setTiposSessao(tp || []);
   }
   useEffect(() => {
     load();
@@ -344,8 +410,12 @@ export default function MoreWeb() {
     await api(`/sessoes-anuais/${sa.id}`, { method: 'PUT', body: { ativo: !sa.ativo } });
     load();
   }
+  async function toggleTipo(t: any) {
+    await api(`/tipos-sessao/${t.id}`, { method: 'PUT', body: { ativo: !t.ativo } });
+    load();
+  }
 
-  function onSaved() { setCalModal(null); setShareModal(null); setCatModal(null); setSaModal(null); load(); }
+  function onSaved() { setCalModal(null); setShareModal(null); setCatModal(null); setSaModal(null); setTipoModal(null); load(); }
 
   return (
     <div className="page">
@@ -465,6 +535,31 @@ export default function MoreWeb() {
       </div>
       </Section>
 
+      {/* Tipos de Sessão section */}
+      <Section title="Tipos de sessão">
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>Tipos disponíveis ao registrar sessões.</div>
+          <button className="btn btn-primary btn-sm" onClick={() => setTipoModal({})}>+ Novo Tipo</button>
+        </div>
+        {tiposSessao.length === 0
+          ? <div className="empty" style={{ padding:16 }}><div className="empty-text">Nenhum tipo cadastrado</div></div>
+          : tiposSessao.map(t => (
+              <div key={t.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid var(--border)', opacity: t.ativo ? 1 : 0.5 }}>
+                <div style={{ width:16, height:16, borderRadius:4, background:t.cor||'#6b7280', flexShrink:0 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:600, fontSize:14 }}>{t.label}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>{t.key}</div>
+                </div>
+                {!t.ativo && <span className="pill" style={{ background:'#9993', color:'var(--muted)', fontSize:10 }}>inativo</span>}
+                <button className="btn btn-outline btn-sm" onClick={() => toggleTipo(t)}>{t.ativo ? 'Desativar' : 'Ativar'}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setTipoModal(t)} aria-label="Editar tipo"><Ionicons name="create-outline" size={16} /></button>
+              </div>
+            ))
+        }
+      </div>
+      </Section>
+
       {/* Comemorativas (sessões anuais) section */}
       <Section title="Sessões Comemorativas">
       <div className="card" style={{ marginBottom: 24 }}>
@@ -526,6 +621,7 @@ export default function MoreWeb() {
       {shareModal !== null && <ShareModal   cal={shareModal} onClose={()=>setShareModal(null)} onSaved={onSaved} />}
       {catModal   !== null && <CategoryModal cat={catModal}  onClose={()=>setCatModal(null)}   onSaved={onSaved} />}
       {saModal    !== null && <SessaoAnualModal sa={saModal} onClose={()=>setSaModal(null)}    onSaved={onSaved} />}
+      {tipoModal  !== null && <TipoSessaoModal tipo={tipoModal} onClose={()=>setTipoModal(null)} onSaved={onSaved} />}
     </div>
   );
 }
