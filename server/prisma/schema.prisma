@@ -330,14 +330,42 @@ model SessionRecord {
   coposCriancas Int?
   repeticoes    Int?
 
+  // Transmissão da Assistência (só ESCALA/EXTRA): dois Mestres (entrega/pega), gravados em SessionParticipation.
+  transmissaoAssistencia Boolean @default(false)
+  // Sessão dirigida por autoridade de grau superior (marcador independente da transmissão).
+  dirigidaPorAutoridade  Boolean @default(false)
+
   observacoes String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
   creator  User     @relation("SessionCreator", fields: [creatorId], references: [id])
+  participations SessionParticipation[]
 
   @@index([calendarId, date])
+}
+
+// Participação estruturada: uma linha por (sessão, pessoa, função). Fonte de verdade das estatísticas.
+// A pessoa vem da base (associadoId) ou é snapshot de outro núcleo (nomeTexto/grau/nucleo).
+model SessionParticipation {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  associadoId String?
+  associado   Associado?  @relation(fields: [associadoId], references: [id])
+  // Snapshot quando a pessoa não está na base (outro núcleo).
+  nomeTexto String?
+  grau      String?
+  nucleo    String?
+  // DIRECAO | EXPLANACAO | LEITURA | SOM | ASSISTENTE | AUX_ASSISTENTE | TRANSMISSAO_ENTREGA | TRANSMISSAO_PEGA
+  funcao    String
+  // Data denormalizada da sessão (consulta rápida de estatística por período).
+  data      DateTime
+
+  @@index([funcao, data])
+  @@index([associadoId, funcao])
+  @@index([sessionId])
 }
 
 // Estoque de vegetal (contagens periódicas e lotes)
@@ -387,6 +415,8 @@ model Associado {
   auxiliarEm          LevantamentoAuxiliar[]
   // Conta de login vinculada a este associado (no máximo uma).
   user                User?                  @relation("UserAssociado")
+  // Participações em sessões (direção, leitura, assistência etc.).
+  participacoes       SessionParticipation[]
 
   @@index([nome])
   @@index([status])

@@ -26,6 +26,33 @@ const TYPE_COLORS: Record<string,string> = {
 function typeLabel(k: string) { return TYPES.find(t=>t.key===k)?.label ?? k; }
 function typeColor(k: string) { return TYPE_COLORS[k] ?? '#6b7280'; }
 
+// Graus elegíveis por papel da sessão (resolução OQ-02). Usado para filtrar a busca
+// e popular o Grau na entrada manual "outro núcleo". TODO: tornar configurável (tela de regras).
+const GRAUS = ['QM', 'CDC', 'CI', 'QS'];
+const ROLE_GRAUS: Record<string, string[]> = {
+  dirigente: ['QM', 'CDC', 'CI'],
+  assistente: ['QM'],
+  som: GRAUS,
+  leitura: GRAUS,
+  explanacao: GRAUS,
+  auxiliar: GRAUS,
+  mestreEntrega: ['QM'],
+  mestrePega: ['QM'],
+};
+
+// Sessões anuais/comemorativas conhecidas — sugeridas no Título quando o tipo é Comemorativa.
+// TODO: virar cadastro (com data e tipo: Comemorativa/Extra como Passagem do Ano).
+const SESSOES_ANUAIS = [
+  '6 de Janeiro - Dia de Reis',
+  '10 de Fevereiro - Aniversário do Mestre',
+  '27 de Março - Ressurreição do Mestre',
+  '23 de Junho - São João',
+  '22 de Julho - Recriação da UDV',
+  '27 de Setembro - São Cosme e São Damião',
+  '1 de Novembro - Aniversário do Núcleo',
+  '25 de Dezembro - Natal',
+];
+
 // Nome de exibição do M. Assistente de um levantamento (base ou manual de outro núcleo), em MAIÚSCULO.
 function assistDisplay(l: any): string {
   if (!l) return '';
@@ -40,6 +67,30 @@ function auxList(l: any): string {
                 : `${titleCaseNome(x.nome)} (${x.nucleo ? `outro núcleo · ${x.nucleo}` : 'outro núcleo'})`
   ).filter(Boolean).join(', ');
 }
+
+// Converte uma linha de participação em pessoa para o formulário (base ou manual de outro núcleo).
+const partToPessoa = (p: any) => p.associado
+  ? { id: p.associado.id, nome: p.associado.nome, grau: p.associado.grau }
+  : { nome: p.nomeTexto, grau: p.grau || undefined, nucleo: p.nucleo || undefined, manual: true };
+const findRolePessoa = (parts: any[], funcao: string) => {
+  const p = (parts || []).find((x: any) => x.funcao === funcao);
+  return p ? partToPessoa(p) : null;
+};
+const auxFromParts = (parts: any[]) => (parts || []).filter((x: any) => x.funcao === 'AUX_ASSISTENTE').map(partToPessoa);
+
+// Papel a partir da participação; se não houver (sessão antiga só com texto), usa o texto como pessoa manual.
+const roleOrText = (parts: any[], funcao: string, textVal?: string) => {
+  const fromPart = findRolePessoa(parts, funcao);
+  if (fromPart) return fromPart;
+  const t = String(textVal || '').trim();
+  return t ? { nome: t, manual: true } : null;
+};
+// Auxiliares a partir das participações; senão, separa o texto antigo (vírgula) em pessoas manuais.
+const auxOrText = (parts: any[], textVal?: string) => {
+  const fromParts = auxFromParts(parts);
+  if (fromParts.length) return fromParts;
+  return String(textVal || '').split(',').map((s) => s.trim()).filter(Boolean).map((nome) => ({ nome, manual: true }));
+};
 
 // Totaliza uma lista de sessões (sessões, coado, retorno e copos equivalentes).
 function computeStats(list: any[]) {
@@ -67,32 +118,71 @@ const CMP_METRICS = [
 function SessionModal({ sess, calendars, onClose, onSaved }: any) {
   const isNew = !sess?.id;
   const today = new Date().toISOString().slice(0,10);
+  const parts = sess?.participations;
   const [form, setForm] = useState<any>({
     calendarId: calendars.find((c:any) => c.type==='INSTITUCIONAL')?.id || calendars[0]?.id || '',
-    type: 'ESCALA', title: '',
-    dirigente:'', assistente:'', auxAssistente:'', som:'',
-    leituraDocumentos:'', explanacao:'', vegetalDescricao:'',
+    type: 'ESCALA', title: '', vegetalDescricao:'',
     coadoLitros:'', comungadoLitros:'', retornoLitros:'',
     coposSimples:'', coposDuplos:'', coposCriancas:'', repeticoes:'', observacoes:'',
     ...(sess || {}),
     date: sess?.date ? new Date(sess.date).toISOString().slice(0,10) : today,
+    // Papéis estruturados (objeto por papel; base {id,nome,grau} ou manual {nome,grau,nucleo}).
+    papeis: {
+      dirigente: roleOrText(parts, 'DIRECAO', sess?.dirigente),
+      assistente: roleOrText(parts, 'ASSISTENTE', sess?.assistente),
+      som: roleOrText(parts, 'SOM', sess?.som),
+      leitura: roleOrText(parts, 'LEITURA', sess?.leituraDocumentos),
+      explanacao: roleOrText(parts, 'EXPLANACAO', sess?.explanacao),
+      mestreEntrega: findRolePessoa(parts, 'TRANSMISSAO_ENTREGA'),
+      mestrePega: findRolePessoa(parts, 'TRANSMISSAO_PEGA'),
+    },
+    auxiliares: auxOrText(parts, sess?.auxAssistente),
+    transmissaoAssistencia: !!sess?.transmissaoAssistencia,
+    dirigidaPorAutoridade: !!sess?.dirigidaPorAutoridade,
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   function set(k: string) { return (e: any) => setForm((f:any) => ({...f, [k]: e.target.value})); }
   function num(v: any) { return v===''||v==null ? null : String(v).replace(',','.'); }
+  const setPapel = (k: string) => (v: any) => setForm((f:any) => ({ ...f, papeis: { ...f.papeis, [k]: v } }));
+  const canTransmit = form.type === 'ESCALA' || form.type === 'EXTRA';
+
+  // Tipo deixou de ser Escala/Extra → desmarca transmissão e limpa os Mestres.
+  function setTipo(e: any) {
+    const type = e.target.value;
+    setForm((f:any) => {
+      const allow = type === 'ESCALA' || type === 'EXTRA';
+      return allow ? { ...f, type } : { ...f, type, transmissaoAssistencia: false, papeis: { ...f.papeis, mestreEntrega: null, mestrePega: null } };
+    });
+  }
+
+  // Pessoa do formulário → payload da API ({associadoId} | {nome,grau,nucleo} | null).
+  const pessoaBody = (p: any) => !p ? null : (p.id ? { associadoId: p.id } : { nome: p.nome, grau: p.grau || null, nucleo: p.nucleo || null });
 
   async function save() {
     if (!form.date) { setError('Data é obrigatória'); return; }
+    if (form.transmissaoAssistencia && (!form.papeis.mestreEntrega || !form.papeis.mestrePega)) {
+      setError('Na Transmissão da Assistência, informe o Mestre que entrega e o Mestre que pega.'); return;
+    }
     setSaving(true); setError('');
     try {
+      const p = form.papeis;
       const body = {
-        ...form, date: `${form.date}T12:00:00`,
+        calendarId: form.calendarId, date: `${form.date}T12:00:00`, type: form.type, title: form.title || null,
+        vegetalDescricao: form.vegetalDescricao || null, observacoes: form.observacoes || null,
         coadoLitros: num(form.coadoLitros), comungadoLitros: num(form.comungadoLitros),
         retornoLitros: num(form.retornoLitros), coposSimples: num(form.coposSimples),
         coposDuplos: num(form.coposDuplos), coposCriancas: num(form.coposCriancas),
         repeticoes: num(form.repeticoes),
+        transmissaoAssistencia: !!form.transmissaoAssistencia,
+        dirigidaPorAutoridade: !!form.dirigidaPorAutoridade,
+        papeis: {
+          dirigente: pessoaBody(p.dirigente), assistente: pessoaBody(p.assistente), som: pessoaBody(p.som),
+          leitura: pessoaBody(p.leitura), explanacao: pessoaBody(p.explanacao),
+          mestreEntrega: pessoaBody(p.mestreEntrega), mestrePega: pessoaBody(p.mestrePega),
+        },
+        auxiliares: (form.auxiliares || []).map(pessoaBody),
       };
       if (isNew) await api('/sessions', { method: 'POST', body });
       else       await api(`/sessions/${sess.id}`, { method: 'PUT', body });
@@ -133,7 +223,7 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
             </div>
             <div className="form-group">
               <label className="form-label">Tipo</label>
-              <select className="form-select" value={form.type} onChange={set('type')}>
+              <select className="form-select" value={form.type} onChange={setTipo}>
                 {TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </div>
@@ -141,22 +231,77 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
 
           <div className="form-row">
             {field('Data *','date','date')}
-            {field('Título (opcional)','title','text','Ex.: Sessão de Reis')}
+            <div className="form-group">
+              <label className="form-label">Título (opcional)</label>
+              <input className="form-input" value={form.title??''} onChange={set('title')}
+                placeholder={form.type==='COMEMORATIVA' ? 'Escolha ou digite a sessão anual…' : 'Ex.: Sessão de Reis'}
+                list={form.type==='COMEMORATIVA' ? 'sessoes-anuais' : undefined} />
+              {form.type==='COMEMORATIVA' && (
+                <datalist id="sessoes-anuais">
+                  {SESSOES_ANUAIS.map((s) => <option key={s} value={s} />)}
+                </datalist>
+              )}
+            </div>
           </div>
 
           <div className="divider" />
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Ministração</div>
 
           <div className="form-row">
-            {field('Mestre Dirigente','dirigente')}
-            {field('Mestre Assistente','assistente')}
+            <div className="form-group">
+              <label className="form-label">Mestre Dirigente</label>
+              <AssociadoPicker mode="single" allowedGraus={ROLE_GRAUS.dirigente} value={form.papeis.dirigente} onChange={setPapel('dirigente')} placeholder="Buscar dirigente…" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Mestre Assistente (QM)</label>
+              <AssociadoPicker mode="single" grau="QM" allowedGraus={ROLE_GRAUS.assistente} value={form.papeis.assistente} onChange={setPapel('assistente')} placeholder="Buscar assistente (QM)…" />
+            </div>
           </div>
-          {field('Auxiliares do Assistente','auxAssistente')}
+          <div className="form-group">
+            <label className="form-label">Auxiliares do Assistente</label>
+            <AssociadoPicker mode="multi" allowedGraus={ROLE_GRAUS.auxiliar} value={form.auxiliares} onChange={(v:any)=>setForm((f:any)=>({...f, auxiliares: v}))} placeholder="Buscar auxiliares…" />
+          </div>
           <div className="form-row">
-            {field('Som','som')}
-            {field('Leitura dos Documentos','leituraDocumentos')}
+            <div className="form-group">
+              <label className="form-label">Som</label>
+              <AssociadoPicker mode="single" allowedGraus={ROLE_GRAUS.som} value={form.papeis.som} onChange={setPapel('som')} placeholder="Buscar responsável pelo som…" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Leitura dos Documentos</label>
+              <AssociadoPicker mode="single" allowedGraus={ROLE_GRAUS.leitura} value={form.papeis.leitura} onChange={setPapel('leitura')} placeholder="Buscar leitor…" />
+            </div>
           </div>
-          {field('Explanação','explanacao')}
+          <div className="form-group">
+            <label className="form-label">Explanação</label>
+            <AssociadoPicker mode="single" allowedGraus={ROLE_GRAUS.explanacao} value={form.papeis.explanacao} onChange={setPapel('explanacao')} placeholder="Buscar quem explana…" />
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!form.dirigidaPorAutoridade} onChange={(e)=>setForm((f:any)=>({...f, dirigidaPorAutoridade: e.target.checked}))} />
+            Dirigida por autoridade (grau superior)
+          </label>
+
+          {canTransmit && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!form.transmissaoAssistencia}
+                  onChange={(e)=>setForm((f:any)=>({...f, transmissaoAssistencia: e.target.checked}))} />
+                Houve Transmissão da Assistência (Escala/Extra)
+              </label>
+              {form.transmissaoAssistencia && (
+                <div className="form-row" style={{ marginTop: 8 }}>
+                  <div className="form-group">
+                    <label className="form-label">Mestre que entrega a assistência (QM)</label>
+                    <AssociadoPicker mode="single" grau="QM" allowedGraus={ROLE_GRAUS.mestreEntrega} value={form.papeis.mestreEntrega} onChange={setPapel('mestreEntrega')} placeholder="Buscar Mestre…" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Mestre que pega a assistência (QM)</label>
+                    <AssociadoPicker mode="single" grau="QM" allowedGraus={ROLE_GRAUS.mestrePega} value={form.papeis.mestrePega} onChange={setPapel('mestrePega')} placeholder="Buscar Mestre…" />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           <div className="divider" />
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Vegetal</div>
@@ -215,7 +360,7 @@ function pessoaLabel(p: any): string {
 // Autocomplete de pessoas para o levantamento. mode="single" (M.Assistente) ou "multi" (auxiliares).
 // Cada pessoa é { id, nome, grau } (da base) OU { nome, grau, nucleo, manual:true } (outro núcleo).
 // grau filtra a busca na base (ex.: "QM"). value: objeto (single) ou objeto[] (multi).
-function AssociadoPicker({ mode='single', grau, value, onChange, placeholder }: any) {
+function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, placeholder }: any) {
   const [q, setQ] = useState('');
   const [opts, setOpts] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
@@ -301,14 +446,27 @@ function AssociadoPicker({ mode='single', grau, value, onChange, placeholder }: 
               + Não está na lista? Outro núcleo
             </button>
           ) : (
-            <div style={{ marginTop: 6, border: '1px dashed var(--border)', borderRadius: 8, padding: 8, background: '#FBF7EE' }}>
-              <div style={{ fontSize: 11, color: '#8a6516', fontWeight: 700, marginBottom: 6 }}>PESSOA DE OUTRO NÚCLEO (só neste levantamento)</div>
-              <div className="form-row" style={{ marginBottom: 6 }}>
-                <input className="form-input" placeholder="Nome *" value={man.nome} onChange={(e) => setMan((m: any) => ({ ...m, nome: e.target.value }))} />
-                <input className="form-input" placeholder="Grau" value={man.grau} onChange={(e) => setMan((m: any) => ({ ...m, grau: e.target.value }))} />
+            <div style={{ marginTop: 6, border: '1px dashed var(--border)', borderRadius: 8, padding: 12, background: '#FBF7EE', minWidth: 320 }}>
+              <div style={{ fontSize: 11, color: '#8a6516', fontWeight: 700, marginBottom: 8 }}>PESSOA DE OUTRO NÚCLEO (não cadastra; fica só neste registro)</div>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <input className="form-input" placeholder="Nome *" value={man.nome} autoFocus onChange={(e) => setMan((m: any) => ({ ...m, nome: e.target.value }))} />
               </div>
-              <input className="form-input" placeholder="Núcleo (opcional)" value={man.nucleo} onChange={(e) => setMan((m: any) => ({ ...m, nucleo: e.target.value }))} />
-              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <div className="form-row" style={{ marginBottom: 8 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  {allowedGraus?.length ? (
+                    <select className="form-select" value={man.grau} onChange={(e) => setMan((m: any) => ({ ...m, grau: e.target.value }))}>
+                      <option value="">Grau…</option>
+                      {allowedGraus.map((g: string) => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  ) : (
+                    <input className="form-input" placeholder="Grau" value={man.grau} onChange={(e) => setMan((m: any) => ({ ...m, grau: e.target.value }))} />
+                  )}
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <input className="form-input" placeholder="Núcleo (opcional)" value={man.nucleo} onChange={(e) => setMan((m: any) => ({ ...m, nucleo: e.target.value }))} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
                 <button type="button" className="btn btn-primary btn-sm" onClick={addManual} disabled={!String(man.nome).trim()}>Adicionar</button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowManual(false); setMan({ nome: '', grau: '', nucleo: '' }); }}>Cancelar</button>
               </div>

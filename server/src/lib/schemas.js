@@ -175,6 +175,14 @@ export const birthdayCreateSchema = z.object({
 export const birthdayUpdateSchema = birthdayCreateSchema.partial();
 
 // ── Sessões ──
+// Pessoa em um papel da sessão: da base (associadoId) OU snapshot manual de outro núcleo.
+const pessoaSessaoSchema = z.object({
+  associadoId: optText,
+  nome: optText,
+  grau: optText,
+  nucleo: optText,
+});
+
 export const sessionCreateSchema = z.object({
   calendarId: z.string().min(1, 'calendarId é obrigatório'),
   date: dateLike,
@@ -195,6 +203,21 @@ export const sessionCreateSchema = z.object({
   coposDuplos: numLike.nullish(),
   coposCriancas: numLike.nullish(),
   repeticoes: numLike.nullish(),
+  // Papéis estruturados (cada pessoa: da base via associadoId OU manual de outro núcleo).
+  transmissaoAssistencia: z.boolean().optional(),
+  dirigidaPorAutoridade: z.boolean().optional(),
+  papeis: z
+    .object({
+      dirigente: pessoaSessaoSchema.nullish(),
+      assistente: pessoaSessaoSchema.nullish(),
+      som: pessoaSessaoSchema.nullish(),
+      leitura: pessoaSessaoSchema.nullish(),
+      explanacao: pessoaSessaoSchema.nullish(),
+      mestreEntrega: pessoaSessaoSchema.nullish(),
+      mestrePega: pessoaSessaoSchema.nullish(),
+    })
+    .optional(),
+  auxiliares: z.array(pessoaSessaoSchema).optional(),
 });
 export const sessionUpdateSchema = sessionCreateSchema.partial();
 
