@@ -189,6 +189,88 @@ function CategoryModal({ cat, onClose, onSaved }: any) {
   );
 }
 
+// Cadastro de Sessão Anual (recorrente) — nome, dia/mês e tipo (Comemorativa/Extra).
+function SessaoAnualModal({ sa, onClose, onSaved }: any) {
+  const isNew = !sa?.id;
+  const [form, setForm] = useState<any>({ nome: '', dia: '', mes: '', tipo: 'COMEMORATIVA', ...(sa || {}) });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  function set(k: string) { return (e: any) => setForm((f:any) => ({ ...f, [k]: e.target.value })); }
+
+  async function save() {
+    if (!form.nome.trim()) { setError('Nome é obrigatório'); return; }
+    setSaving(true); setError('');
+    try {
+      const body = { nome: form.nome.trim(), dia: form.dia===''?null:Number(form.dia), mes: form.mes===''?null:Number(form.mes), tipo: form.tipo };
+      if (isNew) await api('/sessoes-anuais', { method: 'POST', body });
+      else       await api(`/sessoes-anuais/${sa.id}`, { method: 'PUT', body });
+      onSaved();
+    } catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+  async function remove() {
+    if (!confirm('Excluir esta sessão anual?')) return;
+    await api(`/sessoes-anuais/${sa.id}`, { method: 'DELETE' });
+    onSaved();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2 className="modal-title">{isNew ? 'Nova Sessão Anual' : 'Editar Sessão Anual'}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="form-error">{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Nome *</label>
+            <input className="form-input" value={form.nome} onChange={set('nome')} placeholder="Ex.: Dia de Reis" autoFocus />
+          </div>
+          <div className="form-row">
+            <div className="form-group" style={{ width: 90 }}>
+              <label className="form-label">Dia</label>
+              <input className="form-input" type="number" min={1} max={31} value={form.dia??''} onChange={set('dia')} />
+            </div>
+            <div className="form-group" style={{ width: 90 }}>
+              <label className="form-label">Mês</label>
+              <input className="form-input" type="number" min={1} max={12} value={form.mes??''} onChange={set('mes')} />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Tipo</label>
+              <select className="form-select" value={form.tipo} onChange={set('tipo')}>
+                <option value="COMEMORATIVA">Anual</option>
+                <option value="EXTRA">Extra (ex.: Passagem do Ano)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          {!isNew && <button className="btn btn-danger btn-sm" onClick={remove}>Excluir</button>}
+          <span style={{ flex:1 }} />
+          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando...':'Salvar'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Seção recolhível (accordion). Começa fechada por padrão para a página não ficar extensa.
+function Section({ title, defaultOpen = false, children }: any) {
+  const [open, setOpen] = useState<boolean>(!!defaultOpen);
+  return (
+    <>
+      <div className="section-label" onClick={() => setOpen((o: boolean) => !o)}
+           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
+        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} />
+        {title}
+      </div>
+      {open && children}
+    </>
+  );
+}
+
 export default function MoreWeb() {
   useEffect(() => { injectWebCss(); }, []);
 
@@ -197,13 +279,15 @@ export default function MoreWeb() {
   const [calModal, setCalModal] = useState<any>(null);
   const [shareModal, setShareModal] = useState<any>(null);
   const [catModal, setCatModal] = useState<any>(null);
+  const [anuais, setAnuais] = useState<any[]>([]);
+  const [saModal, setSaModal] = useState<any>(null);
   const [prefs, setPrefs] = useState(getPrefs());
   const [gstatus, setGstatus] = useState<any>({ configured: false, connected: false, email: null });
   const [googleMsg, setGoogleMsg] = useState('');
 
   async function load() {
-    const [cals, categories] = await Promise.all([api('/calendars'), api('/categories?all=1')]).catch(()=>[[],[]]);
-    setCalendars(cals); setCats(categories);
+    const [cals, categories, an] = await Promise.all([api('/calendars'), api('/categories?all=1'), api('/sessoes-anuais?all=1')]).catch(()=>[[],[],[]]);
+    setCalendars(cals); setCats(categories); setAnuais(an || []);
   }
   useEffect(() => {
     load();
@@ -255,7 +339,13 @@ export default function MoreWeb() {
     load();
   }
 
-  function onSaved() { setCalModal(null); setShareModal(null); setCatModal(null); load(); }
+  const MES_ABREV = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  async function toggleAnual(sa: any) {
+    await api(`/sessoes-anuais/${sa.id}`, { method: 'PUT', body: { ativo: !sa.ativo } });
+    load();
+  }
+
+  function onSaved() { setCalModal(null); setShareModal(null); setCatModal(null); setSaModal(null); load(); }
 
   return (
     <div className="page">
@@ -264,7 +354,7 @@ export default function MoreWeb() {
       </div>
 
       {/* Preferences section */}
-      <div className="section-label">Preferências</div>
+      <Section title="Preferências">
       <div className="card" style={{ marginBottom: 24 }}>
         <label style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer' }}>
           <input type="checkbox" checked={prefs.notificationsEnabled} onChange={e => toggleNotifications(e.target.checked)} />
@@ -317,9 +407,10 @@ export default function MoreWeb() {
           }
         </div>
       </div>
+      </Section>
 
       {/* Calendars section */}
-      <div className="section-label">Agendas</div>
+      <Section title="Agendas">
       <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
           <button className="btn btn-primary btn-sm" onClick={() => setCalModal({})}>+ Nova Agenda</button>
@@ -347,9 +438,10 @@ export default function MoreWeb() {
             ))
         }
       </div>
+      </Section>
 
       {/* Categories section */}
-      <div className="section-label">Categorias de evento</div>
+      <Section title="Categorias de evento">
       <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
           <button className="btn btn-primary btn-sm" onClick={() => setCatModal({})}>+ Nova Categoria</button>
@@ -371,9 +463,33 @@ export default function MoreWeb() {
             ))
         }
       </div>
+      </Section>
+
+      {/* Comemorativas (sessões anuais) section */}
+      <Section title="Sessões Comemorativas">
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>Sugeridas no Título ao registrar sessões Comemorativas/Extra.</div>
+          <button className="btn btn-primary btn-sm" onClick={() => setSaModal({})}>+ Nova</button>
+        </div>
+        {anuais.length === 0
+          ? <div className="empty" style={{ padding:16 }}><div className="empty-text">Nenhuma sessão anual cadastrada</div></div>
+          : anuais.map(sa => (
+              <div key={sa.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid var(--border)', opacity: sa.ativo ? 1 : 0.5 }}>
+                <div style={{ width:54, fontSize:12, color:'var(--muted)', flexShrink:0 }}>{sa.dia && sa.mes ? `${sa.dia} ${MES_ABREV[sa.mes]}` : '—'}</div>
+                <div style={{ flex:1, minWidth:0, fontWeight:600, fontSize:14 }}>{sa.nome}</div>
+                <span className="pill" style={{ background: sa.tipo==='EXTRA' ? '#1a7a4a22' : '#C9952A22', color: sa.tipo==='EXTRA' ? '#1a7a4a' : '#9A6B00', fontSize:10 }}>{sa.tipo==='EXTRA' ? 'Extra' : 'Anual'}</span>
+                {!sa.ativo && <span className="pill" style={{ background:'#9993', color:'var(--muted)', fontSize:10 }}>inativa</span>}
+                <button className="btn btn-outline btn-sm" onClick={() => toggleAnual(sa)}>{sa.ativo ? 'Desativar' : 'Ativar'}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSaModal(sa)} aria-label="Editar sessão anual"><Ionicons name="create-outline" size={16} /></button>
+              </div>
+            ))
+        }
+      </div>
+      </Section>
 
       {/* Export section */}
-      <div className="section-label">Exportação</div>
+      <Section title="Exportação">
       <div className="card" style={{ marginBottom: 24 }}>
         <p style={{ fontSize:13, color:'var(--muted)', marginBottom:14 }}>
           Exporte qualquer agenda para iCalendar (.ics) e importe no Google Agenda, Apple Calendar ou Outlook.
@@ -393,6 +509,7 @@ export default function MoreWeb() {
           ))}
         </div>
       </div>
+      </Section>
 
       {/* Logout */}
       <div className="card">
@@ -408,6 +525,7 @@ export default function MoreWeb() {
       {calModal   !== null && <CalModal     cal={calModal}   onClose={()=>setCalModal(null)}   onSaved={onSaved} />}
       {shareModal !== null && <ShareModal   cal={shareModal} onClose={()=>setShareModal(null)} onSaved={onSaved} />}
       {catModal   !== null && <CategoryModal cat={catModal}  onClose={()=>setCatModal(null)}   onSaved={onSaved} />}
+      {saModal    !== null && <SessaoAnualModal sa={saModal} onClose={()=>setSaModal(null)}    onSaved={onSaved} />}
     </div>
   );
 }

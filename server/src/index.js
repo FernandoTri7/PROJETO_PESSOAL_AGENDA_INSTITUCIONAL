@@ -16,6 +16,7 @@ import { birthdaysRouter } from './routes/birthdays.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { vegetalRouter } from './routes/vegetal.js';
 import { levantamentosRouter } from './routes/levantamentos.js';
+import { sessoesAnuaisRouter } from './routes/sessoesAnuais.js';
 import { associadosRouter } from './routes/associados.js';
 import { exportRouter } from './routes/export.js';
 import { authMiddleware } from './lib/auth.js';
@@ -73,6 +74,7 @@ app.use('/api/birthdays', authMiddleware, birthdaysRouter);
 app.use('/api/sessions', authMiddleware, sessionsRouter);
 app.use('/api/vegetal', authMiddleware, vegetalRouter);
 app.use('/api/levantamentos', authMiddleware, levantamentosRouter);
+app.use('/api/sessoes-anuais', authMiddleware, sessoesAnuaisRouter);
 app.use('/api/associados', authMiddleware, associadosRouter);
 app.use('/api/export', authMiddleware, exportRouter);
 

@@ -251,6 +251,18 @@ export const vegetalCreateSchema = z.object({
 });
 export const vegetalUpdateSchema = vegetalCreateSchema.partial();
 
+// ── Sessões anuais (cadastro recorrente) ──
+const sessaoAnualTipo = z.enum(['COMEMORATIVA', 'EXTRA']);
+export const sessaoAnualCreateSchema = z.object({
+  nome: z.string().trim().min(1, 'nome é obrigatório'),
+  dia: numLike.nullish(),
+  mes: numLike.nullish(),
+  tipo: sessaoAnualTipo.optional(),
+  ativo: z.boolean().optional(),
+  ordem: numLike.optional(),
+});
+export const sessaoAnualUpdateSchema = sessaoAnualCreateSchema.partial();
+
 // ── Levantamentos de estoque ──
 const levantamentoItemSchema = z.object({
   nome: z.string().trim().min(1, 'nome do item é obrigatório'),

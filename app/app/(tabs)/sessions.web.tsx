@@ -40,19 +40,6 @@ const ROLE_GRAUS: Record<string, string[]> = {
   mestrePega: ['QM'],
 };
 
-// Sessões anuais/comemorativas conhecidas — sugeridas no Título quando o tipo é Comemorativa.
-// TODO: virar cadastro (com data e tipo: Comemorativa/Extra como Passagem do Ano).
-const SESSOES_ANUAIS = [
-  '6 de Janeiro - Dia de Reis',
-  '10 de Fevereiro - Aniversário do Mestre',
-  '27 de Março - Ressurreição do Mestre',
-  '23 de Junho - São João',
-  '22 de Julho - Recriação da UDV',
-  '27 de Setembro - São Cosme e São Damião',
-  '1 de Novembro - Aniversário do Núcleo',
-  '25 de Dezembro - Natal',
-];
-
 // Nome de exibição do M. Assistente de um levantamento (base ou manual de outro núcleo), em MAIÚSCULO.
 function assistDisplay(l: any): string {
   if (!l) return '';
@@ -115,7 +102,7 @@ const CMP_METRICS = [
 
 // ─── Session Form Modal ──────────────────────────────────────────────────────
 
-function SessionModal({ sess, calendars, onClose, onSaved }: any) {
+function SessionModal({ sess, calendars, anuais, onClose, onSaved }: any) {
   const isNew = !sess?.id;
   const today = new Date().toISOString().slice(0,10);
   const parts = sess?.participations;
@@ -232,14 +219,20 @@ function SessionModal({ sess, calendars, onClose, onSaved }: any) {
           <div className="form-row">
             {field('Data *','date','date')}
             <div className="form-group">
-              <label className="form-label">Título (opcional)</label>
-              <input className="form-input" value={form.title??''} onChange={set('title')}
-                placeholder={form.type==='COMEMORATIVA' ? 'Escolha ou digite a sessão anual…' : 'Ex.: Sessão de Reis'}
-                list={form.type==='COMEMORATIVA' ? 'sessoes-anuais' : undefined} />
-              {form.type==='COMEMORATIVA' && (
-                <datalist id="sessoes-anuais">
-                  {SESSOES_ANUAIS.map((s) => <option key={s} value={s} />)}
-                </datalist>
+              <label className="form-label">{form.type==='COMEMORATIVA' ? 'Título *' : 'Complemento (opcional)'}</label>
+              {form.type === 'COMEMORATIVA' ? (() => {
+                // Comemorativa: combobox com TODAS as sessões do cadastro (incl. Extra). Preserva título antigo fora da lista.
+                const nomes = (anuais || []).map((s:any) => s.nome);
+                const extra = form.title && !nomes.includes(form.title) ? [form.title] : [];
+                return (
+                  <select className="form-select" value={form.title ?? ''} onChange={set('title')}>
+                    <option value="">Selecione a sessão…</option>
+                    {extra.map((n:string) => <option key={n} value={n}>{n} (atual)</option>)}
+                    {(anuais || []).map((s:any) => <option key={s.id} value={s.nome}>{s.nome}</option>)}
+                  </select>
+                );
+              })() : (
+                <input className="form-input" value={form.title??''} onChange={set('title')} placeholder="Ex.: complemento do título" />
               )}
             </div>
           </div>
@@ -366,6 +359,8 @@ function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, p
   const [open, setOpen] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [man, setMan] = useState<any>({ nome: '', grau: '', nucleo: '' });
+  // Pessoa removida temporariamente durante uma edição; restaurada se a edição for cancelada.
+  const [pendingRestore, setPendingRestore] = useState<any>(null);
 
   // Busca com debounce ao digitar.
   useEffect(() => {
@@ -389,6 +384,7 @@ function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, p
     const obj = { id: a.id, nome: a.nome, grau: a.grau };
     if (mode === 'multi') { if (!isPicked(a)) onChange([...selected, obj]); setQ(''); }
     else { onChange(obj); setQ(''); setOpen(false); }
+    setPendingRestore(null);
   }
   function addManual() {
     const nome = String(man.nome || '').trim();
@@ -396,11 +392,30 @@ function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, p
     const obj = { nome, grau: String(man.grau || '').trim() || undefined, nucleo: String(man.nucleo || '').trim() || undefined, manual: true };
     if (mode === 'multi') onChange([...selected, obj]);
     else onChange(obj);
-    setMan({ nome: '', grau: '', nucleo: '' }); setShowManual(false); setQ('');
+    setMan({ nome: '', grau: '', nucleo: '' }); setShowManual(false); setQ(''); setPendingRestore(null);
+  }
+  // Restaura a pessoa que estava sendo editada (ao cancelar ou sair sem escolher outra).
+  function restorePending() {
+    if (!pendingRestore) return;
+    onChange(mode === 'multi' ? [...selected, pendingRestore] : pendingRestore);
+    setPendingRestore(null);
+  }
+  function cancelManual() {
+    setShowManual(false); setMan({ nome: '', grau: '', nucleo: '' });
+    restorePending();
   }
   function removeAt(idx: number) {
     if (mode === 'multi') onChange(selected.filter((_, i) => i !== idx));
     else onChange(null);
+  }
+  // Editar a pessoa selecionada: manual reabre o formulário pré-preenchido; base volta para a busca.
+  // Guarda a pessoa em pendingRestore para não perdê-la se a edição for cancelada.
+  function editAt(idx: number) {
+    const p = selected[idx];
+    removeAt(idx);
+    setPendingRestore(p);
+    if (p?.manual) { setMan({ nome: p.nome || '', grau: p.grau || '', nucleo: p.nucleo || '' }); setShowManual(true); setOpen(false); }
+    else { setQ(p?.nome ? titleCaseNome(p.nome) : ''); setShowManual(false); setOpen(true); }
   }
 
   const showInput = mode === 'multi' || selected.length === 0;
@@ -413,7 +428,8 @@ function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, p
           {selected.map((p, idx) => (
             <span key={idx} className="pill" style={{ background: p.manual ? '#C9952A22' : '#0F5C2E18', color: p.manual ? '#8a6516' : '#0F5C2E', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {pessoaLabel(p)}
-              <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={() => removeAt(idx)}>✕</span>
+              <span style={{ cursor: 'pointer' }} title="Editar" onClick={() => editAt(idx)}>✎</span>
+              <span style={{ cursor: 'pointer', fontWeight: 700 }} title="Remover" onClick={() => removeAt(idx)}>✕</span>
             </span>
           ))}
         </div>
@@ -426,7 +442,7 @@ function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, p
             placeholder={placeholder || 'Buscar associado…'}
             onChange={(e) => { setQ(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
-            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onBlur={() => setTimeout(() => { setOpen(false); if (!showManual) restorePending(); }, 150)}
           />
           {open && opts.length > 0 && (
             <div style={{ position: 'absolute', zIndex: 20, top: showManual ? 'auto' : '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
@@ -468,7 +484,7 @@ function AssociadoPicker({ mode='single', grau, allowedGraus, value, onChange, p
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button type="button" className="btn btn-primary btn-sm" onClick={addManual} disabled={!String(man.nome).trim()}>Adicionar</button>
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowManual(false); setMan({ nome: '', grau: '', nucleo: '' }); }}>Cancelar</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={cancelManual}>Cancelar</button>
               </div>
             </div>
           )}
@@ -639,16 +655,17 @@ export default function SessionsWeb() {
   const [yearB, setYearB] = useState(nowYear - 1);
   const [estoque, setEstoque] = useState<any>({ atual: null, historico: [] });
   const [levModal, setLevModal] = useState<any>(null);
+  const [anuais, setAnuais] = useState<any[]>([]);
 
   // FAB global: ?new=<ts> abre o modal de nova sessão
   const { new: newParam } = useLocalSearchParams<{ new?: string }>();
   useEffect(() => { if (newParam) setModal({}); }, [newParam]);
 
   async function load() {
-    const [all, cals, est] = await Promise.all([
-      api('/sessions'), api('/calendars'), api('/levantamentos'),
-    ]).catch(() => [[],[],{ atual: null, historico: [] }]);
-    setSessions(all); setCalendars(cals); setEstoque(est);
+    const [all, cals, est, an] = await Promise.all([
+      api('/sessions'), api('/calendars'), api('/levantamentos'), api('/sessoes-anuais'),
+    ]).catch(() => [[],[],{ atual: null, historico: [] },[]]);
+    setSessions(all); setCalendars(cals); setEstoque(est); setAnuais(an || []);
   }
 
   useEffect(() => { load(); }, []);
@@ -882,6 +899,7 @@ export default function SessionsWeb() {
         <SessionModal
           sess={modal.id ? modal : null}
           calendars={calendars}
+          anuais={anuais}
           onClose={() => setModal(null)}
           onSaved={onSaved}
         />
